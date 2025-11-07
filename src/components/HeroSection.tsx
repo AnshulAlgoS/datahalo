@@ -50,7 +50,7 @@ const HeroSection = () => {
           </h3>
           
           <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto mb-12 leading-relaxed">
-            AI + NLP + Blockchain-backed verification of journalist authenticity.
+            AI + NLP-backed verification of journalist authenticity.
             <br />
             <span className="text-primary font-semibold">Rebuilding Trust in Media — One Article at a Time.</span>
           </p>
