@@ -8,14 +8,14 @@ import Dashboard from "@/components/Dashboard";
 import Impact from "@/components/Impact";
 import Revenue from "@/components/Revenue";
 import Contact from "@/components/Contact";
+import JournalistAnalyzer from "@/components/JournalistAnalyzer";
 
 const Index = () => {
   const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
-    // Enable smooth scrolling
     document.documentElement.style.scrollBehavior = "smooth";
-    
+
     return () => {
       document.documentElement.style.scrollBehavior = "auto";
     };
@@ -28,12 +28,13 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       <SideNav />
-      
+
       <main>
         <HeroSection />
         <HowItWorks />
         <Features />
         <Dashboard />
+        <JournalistAnalyzer />
         <Impact />
         <Revenue />
         <Contact />
