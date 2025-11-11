@@ -3,649 +3,1407 @@ import re
 import asyncio
 import logging
 import json
-from typing import List, Dict, Any, Optional, Set, Tuple
+import random
+from typing import List, Dict, Any, Optional, Set
 from urllib.parse import urlparse, urljoin, quote_plus
+from datetime import datetime
+from collections import defaultdict
 
 import httpx
 from bs4 import BeautifulSoup
 
-logger = logging.getLogger("serp_scraper")
-logging.basicConfig(level=logging.INFO)
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+logger = logging.getLogger("datahalo_scraper")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
-SERP_API_KEY = os.getenv("SERP_API_KEY")  
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36",
-]
-DEFAULT_HEADERS = {"User-Agent": USER_AGENTS[0]}
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+SERP_API_KEY = os.getenv("SERP_API_KEY")
 DEFAULT_CONCURRENCY = int(os.getenv("SCRAPER_CONCURRENCY", "8"))
-DEFAULT_DELAY = float(os.getenv("SCRAPER_DELAY", "0.25"))
-MAX_CONTENT_CHARS = 4000
-MAX_SNIPPET = 240
+DEFAULT_DELAY = float(os.getenv("SCRAPER_DELAY", "0.3"))
+MAX_CONTENT_CHARS = 5000
+MAX_SNIPPET = 300
+REQUEST_TIMEOUT = 15
+MAX_RETRIES = 3
 
-# Controversy / emotional / bias keyword lists (simple heuristics)
-CONTROVERSY_KEYWORDS = [
-    "controversy", "allegation", "allegations", "accused", "accusation",
-    "scandal", "resign", "resignation", "charged", "charged with",
-    "convict", "convicted", "lawsuit", "sued", "complaint", "probe", "investigation", "FIR"
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
 ]
-EMOTIONAL_KEYWORDS = [
-    "shock", "outrage", "heartbreaking", "angry", "angry", "devastated",
-    "emotional", "passionate", "furious"
+
+# ============================================================================
+# ENHANCED ANALYSIS KEYWORDS
+# ============================================================================
+CONTROVERSY_KEYWORDS = {
+    "strong": ["scandal", "convicted", "charged", "arrested", "sued", "lawsuit", "FIR", "indicted", "impeached", 
+               "fired", "dismissed", "expelled", "banned", "suspended from", "investigation into", "accused of corruption"],
+    "medium": ["controversy", "allegation", "accused", "complaint", "probe", "investigation", "resign", "suspended",
+               "criticized for", "backlash", "under fire", "faces criticism", "questioned by", "disputed claims"],
+    "mild": ["criticized", "questioned", "disputed", "debated", "controversial opinion", "mixed reactions",
+             "divided opinion", "some controversy", "raised eyebrows", "sparked debate"]
+}
+
+EMOTIONAL_KEYWORDS = {
+    "high": ["outrage", "furious", "devastated", "shocking", "explosive", "horrific", "slammed", "blasted",
+             "ripped apart", "destroyed", "annihilated", "obliterated", "catastrophic"],
+    "medium": ["angry", "emotional", "passionate", "heated", "intense", "dramatic", "harsh", "strong words",
+               "fired back", "hit out", "lashed out", "condemned"],
+    "mild": ["concerned", "worried", "disappointed", "frustrated", "expressed doubts", "raised concerns"]
+}
+
+# ENHANCED BIAS KEYWORDS with more nuanced detection
+BIAS_KEYWORDS = {
+    "left": [
+        # Political orientation
+        "liberal", "progressive", "secular", "left-wing", "socialist", "social democrat", "leftist",
+        # Indian context
+        "anti-establishment", "anti-BJP", "congress supporter", "AAP supporter", "communist", "marxist",
+        # Social issues
+        "activist", "social justice", "equality advocate", "minority rights", "secularist",
+        # Economic
+        "pro-labor", "workers' rights", "wealth redistribution", "welfare state",
+        # International
+        "pro-palestine", "anti-imperialism", "environmentalist", "climate activist"
+    ],
+    "right": [
+        # Political orientation
+        "conservative", "nationalist", "right-wing", "traditionalist", "right-leaning",
+        # Indian context
+        "pro-government", "BJP supporter", "hindutva", "patriotic", "nationalistic", "saffron",
+        "pro-Modi", "sangh", "RSS", "cultural nationalist",
+        # Social issues
+        "traditional values", "family values", "religious conservative", "pro-majority",
+        # Economic
+        "pro-business", "free market", "capitalist", "privatization advocate",
+        # International
+        "pro-Israel", "strong on defense", "national security hawk"
+    ],
+    "centrist": [
+        "balanced", "objective", "impartial", "non-partisan", "fact-based", "unbiased",
+        "moderate", "pragmatic", "centrist", "middle ground", "both sides"
+    ],
+    "libertarian": [
+        "libertarian", "individual freedom", "limited government", "free speech absolutist",
+        "civil liberties", "anti-authoritarian", "personal liberty"
+    ]
+}
+
+# POLITICAL AFFILIATION INDICATORS
+POLITICAL_AFFILIATION_KEYWORDS = {
+    "BJP": ["BJP", "Bharatiya Janata Party", "Modi government", "NDA", "saffron party"],
+    "Congress": ["Congress", "INC", "Indian National Congress", "Gandhi family", "UPA"],
+    "AAP": ["AAP", "Aam Aadmi Party", "Arvind Kejriwal", "Delhi government"],
+    "Communist": ["CPI", "CPM", "Communist Party", "Left Front", "marxist", "communist"],
+    "Regional": ["TMC", "DMK", "AIADMK", "Shiv Sena", "NCP", "TDP", "TRS", "BJD"],
+    "Anti-establishment": ["anti-government", "opposition", "dissent", "protest", "resistance"]
+}
+
+# ENHANCED CREDIBILITY INDICATORS
+CREDIBILITY_INDICATORS = {
+    "positive": [
+        # Awards & Recognition
+        "pulitzer", "award-winning", "acclaimed", "respected", "veteran", "renowned",
+        "prestigious award", "journalism award", "padma shri", "padma bhushan", "ramon magsaysay",
+        # Experience
+        "senior editor", "chief editor", "investigative", "fact-checker", "decades of experience",
+        "foreign correspondent", "bureau chief", "columnist",
+        # Verification
+        "verified account", "blue tick", "authenticated", "official account",
+        # Recognition
+        "cited by", "referenced in", "quoted by", "featured in", "appeared on",
+        "ted talk", "keynote speaker", "guest lecturer"
+    ],
+    "negative": [
+        # Misinformation
+        "fake news", "misinformation", "propaganda", "biased reporting", "discredited",
+        "fact-check failed", "debunked", "false claim", "misleading",
+        # Professional issues
+        "fired", "retracted", "plagiarism", "fabrication", "unverified", "anonymous sources",
+        "conflict of interest", "undisclosed", "paid content", "sponsored",
+        # Legal issues
+        "defamation", "libel", "sued for", "legal action", "court case"
+    ]
+}
+
+# AWARD PATTERNS for extraction
+AWARD_PATTERNS = [
+    r"(?i)(pulitzer\s+prize)",
+    r"(?i)(ramnath\s+goenka\s+award)",
+    r"(?i)(padma\s+(?:shri|bhushan|vibhushan))",
+    r"(?i)(ramon\s+magsaysay\s+award)",
+    r"(?i)(international\s+press\s+freedom\s+award)",
+    r"(?i)(journalist\s+of\s+the\s+year)",
+    r"(?i)(lifetime\s+achievement\s+award)",
+    r"(?i)(george\s+polk\s+award)",
+    r"(?i)(redink\s+award)",
+    r"(?i)(laadli\s+media\s+award)",
 ]
-LEFT_KEYWORDS = ["left", "liberal", "progressive", "socialist", "secular", "anti-establishment"]
-RIGHT_KEYWORDS = ["right", "conservative", "nationalist", "pro-establishment", "pro-government"]
-def _get_snippet(text: str) -> str:
-    return (text or "")[:MAX_SNIPPET]
 
-# ----------------- Helper HTTP layer -----------------
-async def _fetch_text(client: httpx.AsyncClient, url: str, timeout: int = 12) -> Optional[httpx.Response]:
-    """Fetch url using httpx client with rotating User-Agent"""
-    headers = {"User-Agent": USER_AGENTS[hash(url) % len(USER_AGENTS)]}
-    try:
-        r = await client.get(url, headers=headers, timeout=timeout, follow_redirects=True)
-        return r
-    except Exception as e:
-        logger.debug("fetch error %s -> %s", url, e)
-        return None
+# Trusted domains for credibility scoring
+TRUSTED_DOMAINS = {
+    "wikipedia.org": 10,
+    "bbc.com": 9,
+    "reuters.com": 9,
+    "apnews.com": 9,
+    "theguardian.com": 8,
+    "nytimes.com": 8,
+    "washingtonpost.com": 8,
+    "thehindu.com": 8,
+    "indianexpress.com": 7,
+    "scroll.in": 7,
+    "thewire.in": 7,
+    "ndtv.com": 7,
+    "theprint.in": 7,
+    "bbc.co.uk": 9,
+    "aljazeera.com": 7,
+    "economist.com": 8,
+    "ft.com": 8,
+    "time.com": 7,
+    "newslaundry.com": 7,
+}
 
+# Social media platform patterns (enhanced)
+SOCIAL_MEDIA_PATTERNS = {
+    "twitter": [
+        r"(?:twitter\.com|x\.com)/([^/\?&#\s]+)",
+        r"@([a-zA-Z0-9_]{1,15})\b"  # Twitter handle pattern
+    ],
+    "linkedin": [
+        r"linkedin\.com/in/([^/\?&#\s]+)",
+        r"linkedin\.com/pub/([^/\?&#\s]+)"
+    ],
+    "instagram": [
+        r"instagram\.com/([^/\?&#\s]+)",
+        r"instagr\.am/([^/\?&#\s]+)"
+    ],
+    "facebook": [
+        r"facebook\.com/([^/\?&#\s]+)",
+        r"fb\.com/([^/\?&#\s]+)",
+        r"fb\.me/([^/\?&#\s]+)"
+    ],
+    "youtube": [
+        r"youtube\.com/(?:c/|channel/|user/|@)([^/\?&#\s]+)",
+        r"youtu\.be/([^/\?&#\s]+)"
+    ],
+    "medium": [
+        r"medium\.com/@([^/\?&#\s]+)"
+    ],
+    "substack": [
+        r"([^/\?&#\s]+)\.substack\.com"
+    ],
+    "telegram": [
+        r"t\.me/([^/\?&#\s]+)",
+        r"telegram\.me/([^/\?&#\s]+)"
+    ]
+}
 
-# ----------------- SerpApi discovery -----------------
-async def serpapi_search(query: str, num: int = 20) -> List[str]:
-    """
-    Use SerpApi if SERP_API_KEY present; otherwise return empty list.
-    Returns list of raw links.
-    """
-    key = SERP_API_KEY
-    if not key:
-        logger.info("SERP_API_KEY not set; skipping SerpApi discovery.")
-        return []
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
-    endpoint = "https://serpapi.com/search.json"
-    params = {"engine": "google", "q": query, "num": num, "api_key": key}
-    async with httpx.AsyncClient(timeout=20) as client:
-        try:
-            r = await client.get(endpoint, params=params, headers=DEFAULT_HEADERS)
-            r.raise_for_status()
-            data = r.json()
-            links: List[str] = []
-            # organic_results often contains 'link'
-            for item in data.get("organic_results", []):
-                if isinstance(item, dict):
-                    link = item.get("link") or item.get("url")
-                    if link:
-                        links.append(link)
-            # include other likely fields
-            for item in data.get("top_results", []):
-                if isinstance(item, dict) and item.get("link"):
-                    links.append(item.get("link"))
-            return links
-        except Exception as e:
-            logger.warning("SerpApi lookup failed: %s", e)
-            return []
-
-
-# ----------------- extraction utilities -----------------
 def _clean_text(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip())
+    """Clean and normalize text."""
+    if not s:
+        return ""
+    s = re.sub(r'\s+', ' ', s.strip())
+    return s
 
+def _get_snippet(text: str, max_len: int = MAX_SNIPPET) -> str:
+    """Get clean snippet of text."""
+    clean = _clean_text(text)
+    return clean[:max_len] + ("..." if len(clean) > max_len else "")
 
 def _name_parts(name: str) -> List[str]:
-    return [p.lower() for p in _clean_text(name).split() if p]
-
+    """Split name into searchable parts."""
+    return [p.lower() for p in _clean_text(name).split() if len(p) > 2]
 
 def name_in_text(name: str, text: str) -> bool:
+    """Check if journalist name appears in text with flexible matching."""
     if not name or not text:
         return False
+    
     parts = _name_parts(name)
-    txt = re.sub(r"\s+", " ", text.lower())
+    if not parts:
+        return False
+    
+    text_lower = text.lower()
+    
+    # Full name match
+    if name.lower() in text_lower:
+        return True
+    
+    # First + Last name match within reasonable distance
     if len(parts) >= 2:
-        return parts[0] in txt and parts[-1] in txt
-    return parts[0] in txt
-
-
-def _extract_meta(soup: BeautifulSoup, base_url: str) -> Dict[str, Any]:
-    """Extract standard meta info, json-ld, social links, images."""
-    out: Dict[str, Any] = {}
+        first_pos = text_lower.find(parts[0])
+        last_pos = text_lower.find(parts[-1])
+        if first_pos != -1 and last_pos != -1 and abs(first_pos - last_pos) < 100:
+            return True
     
-    # Title extraction
-    out["title"] = _clean_text(soup.title.string) if soup.title else None
-
-    # Profile image extraction (prioritized)
-    out["image"] = None
-    # Try OpenGraph image first
-    og_image = soup.find("meta", property="og:image") or soup.find("meta", property="twitter:image")
-    if og_image and og_image.get("content"):
-        out["image"] = urljoin(base_url, og_image["content"])
+    # Single name match (for mononyms)
+    if len(parts) == 1 and parts[0] in text_lower:
+        return True
     
-    if not out["image"]:
-        # Try author/profile images
-        profile_imgs = soup.find_all("img", class_=re.compile(r"profile|author|avatar"))
-        if profile_imgs:
-            for img in profile_imgs:
-                src = img.get("src") or img.get("data-src")
-                if src:
-                    out["image"] = urljoin(base_url, src)
-                    break
+    return False
 
-    # Social links extraction (improved)
-    social: Set[str] = set()
-    social_patterns = {
-        "twitter.com": r"twitter\.com/([^/\?]+)",
-        "x.com": r"x\.com/([^/\?]+)",
-        "linkedin.com": r"linkedin\.com/in/([^/\?]+)",
-        "instagram.com": r"instagram\.com/([^/\?]+)",
-        "facebook.com": r"facebook\.com/([^/\?]+)",
+def _calculate_domain_trust_score(domain: str) -> int:
+    """Calculate trust score for a domain (0-10)."""
+    domain_clean = domain.replace("www.", "").lower()
+    
+    if domain_clean in TRUSTED_DOMAINS:
+        return TRUSTED_DOMAINS[domain_clean]
+    
+    for trusted, score in TRUSTED_DOMAINS.items():
+        if trusted in domain_clean or domain_clean in trusted:
+            return score
+    
+    if domain_clean.endswith(('.gov', '.edu')):
+        return 8
+    elif domain_clean.endswith(('.org', '.in')):
+        return 5
+    elif domain_clean.endswith(('.com', '.net')):
+        return 4
+    
+    return 3
+
+# ============================================================================
+# HTTP CLIENT
+# ============================================================================
+
+async def _fetch_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    max_retries: int = MAX_RETRIES
+) -> Optional[httpx.Response]:
+    """Fetch URL with exponential backoff retry logic."""
+    
+    for attempt in range(max_retries):
+        try:
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            }
+            
+            response = await client.get(
+                url,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+                follow_redirects=True
+            )
+            
+            if response.status_code == 200:
+                logger.debug(f"✓ Fetched: {url}")
+                return response
+            
+            if response.status_code in [429, 503]:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(f"Rate limited on {url}, waiting {wait_time:.2f}s")
+                await asyncio.sleep(wait_time)
+                continue
+            
+            logger.warning(f"Non-200 status {response.status_code} for {url}")
+            return None
+            
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout on {url} (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1 + attempt)
+        except Exception as e:
+            logger.error(f"Error fetching {url}: {str(e)}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+    
+    logger.error(f"✗ Failed after {max_retries} attempts: {url}")
+    return None
+
+# ============================================================================
+# ENHANCED SERP API INTEGRATION
+# ============================================================================
+
+async def serpapi_search(query: str, num: int = 30) -> List[str]:
+    """Search using SerpApi and return URLs."""
+    if not SERP_API_KEY:
+        logger.info("SERP_API_KEY not set; skipping SerpApi discovery.")
+        return []
+    
+    endpoint = "https://serpapi.com/search.json"
+    params = {
+        "engine": "google",
+        "q": query,
+        "num": num,
+        "api_key": SERP_API_KEY,
+        "hl": "en",
+        "gl": "in",
     }
     
+    async with httpx.AsyncClient(timeout=20) as client:
+        try:
+            logger.info(f"Querying SerpApi: {query}")
+            response = await client.get(endpoint, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            links = []
+            
+            # Knowledge graph (highest priority)
+            kg = data.get("knowledge_graph", {})
+            if kg and kg.get("website"):
+                links.append(kg["website"])
+            
+            # Organic results
+            for item in data.get("organic_results", []):
+                if isinstance(item, dict):
+                    url = item.get("link") or item.get("url")
+                    if url:
+                        links.append(url)
+            
+            logger.info(f"Found {len(links)} results from SerpApi")
+            return links
+            
+        except Exception as e:
+            logger.error(f"SerpApi lookup failed: {str(e)}")
+            return []
+
+async def serpapi_multi_query_search(name: str, max_per_query: int = 15) -> List[str]:
+    """
+    Perform multiple targeted searches to gather comprehensive data.
+    """
+    queries = [
+        f'"{name}" journalist profile',
+        f'"{name}" twitter OR instagram OR linkedin',
+        f'"{name}" awards OR recognition OR achievements',
+        f'"{name}" controversy OR criticism OR scandal',
+        f'"{name}" political bias OR ideology OR leaning',
+        f'"{name}" articles OR publications OR writings',
+        f'"{name}" biography OR about OR background',
+        f'"{name}" wikipedia OR wiki',
+    ]
+    
+    all_urls = []
+    seen = set()
+    
+    for query in queries:
+        urls = await serpapi_search(query, num=max_per_query)
+        for url in urls:
+            if url not in seen:
+                seen.add(url)
+                all_urls.append(url)
+        await asyncio.sleep(0.5)  # Rate limiting between queries
+    
+    logger.info(f"Multi-query search found {len(all_urls)} unique URLs")
+    return all_urls
+
+# ============================================================================
+# ADVANCED EXTRACTION FUNCTIONS
+# ============================================================================
+
+def _extract_profile_image(soup: BeautifulSoup, base_url: str, page_text: str = "") -> Optional[str]:
+    """
+    Comprehensive profile image extraction.
+    Priority: Meta tags > JSON-LD > Profile hints > CDN > Largest
+    """
+    
+    # Strategy 1: Meta tags
+    meta_props = [
+        {"property": "og:image"},
+        {"name": "og:image"},
+        {"property": "twitter:image"},
+        {"name": "twitter:image"},
+        {"name": "thumbnail"},
+        {"property": "og:image:secure_url"},
+    ]
+    
+    for attrs in meta_props:
+        tag = soup.find("meta", attrs=attrs)
+        if tag and tag.get("content"):
+            img_url = urljoin(base_url, tag["content"])
+            logger.debug(f"Found meta image: {img_url}")
+            return img_url
+    
+    # Strategy 2: JSON-LD structured data
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or script.text or "{}")
+            
+            def extract_image_recursive(obj):
+                if isinstance(obj, str) and obj.startswith("http"):
+                    return obj
+                elif isinstance(obj, dict):
+                    for key in ["image", "thumbnailUrl", "logo", "photo", "url"]:
+                        if key in obj:
+                            val = obj[key]
+                            if isinstance(val, str) and val.startswith("http"):
+                                return val
+                            elif isinstance(val, dict) and "url" in val:
+                                return val["url"]
+                            elif isinstance(val, list) and val:
+                                first = val[0]
+                                if isinstance(first, str):
+                                    return first
+                                elif isinstance(first, dict) and "url" in first:
+                                    return first["url"]
+                    for val in obj.values():
+                        result = extract_image_recursive(val)
+                        if result:
+                            return result
+                elif isinstance(obj, list):
+                    for item in obj:
+                        result = extract_image_recursive(item)
+                        if result:
+                            return result
+                return None
+            
+            img = extract_image_recursive(data)
+            if img:
+                img_url = urljoin(base_url, img)
+                logger.debug(f"Found JSON-LD image: {img_url}")
+                return img_url
+                
+        except json.JSONDecodeError:
+            continue
+    
+    # Strategy 3: Inline img tags with profile hints
+    profile_keywords = ["profile", "avatar", "author", "journalist", "headshot", "bio", "photo", "face", "portrait"]
+    scored_images = []
+    
+    for img in soup.find_all("img", limit=50):
+        src = (
+            img.get("src") or
+            img.get("data-src") or
+            img.get("data-lazy-src") or
+            img.get("data-original") or
+            img.get("data-lazy") or
+            ""
+        )
+        
+        # Handle srcset
+        if not src and img.get("srcset"):
+            srcset = img["srcset"].split(",")[0].strip().split()[0]
+            src = srcset
+        
+        if not src or src.startswith("data:"):
+            continue
+        
+        score = 0
+        alt = (img.get("alt") or "").lower()
+        cls = " ".join(img.get("class") or []).lower()
+        
+        # Score based on hints
+        for keyword in profile_keywords:
+            if keyword in alt:
+                score += 3
+            if keyword in cls:
+                score += 2
+            if keyword in src.lower():
+                score += 2
+        
+        # Path-based scoring
+        if re.search(r"/(profile|avatar|author|bio|team|about|headshot)/", src, re.I):
+            score += 3
+        
+        # Size hints
+        width = img.get("width")
+        height = img.get("height")
+        if width and height:
+            try:
+                w, h = int(width), int(height)
+                # Profile images typically square or portrait
+                if 100 <= w <= 500 and 100 <= h <= 500:
+                    score += 2
+            except:
+                pass
+        
+        # Penalty for obvious non-profile images
+        if any(x in src.lower() for x in ["icon", "logo", "badge", "sprite", "banner", "ad"]):
+            score -= 5
+        
+        if score > 0:
+            scored_images.append((score, urljoin(base_url, src)))
+    
+    if scored_images:
+        scored_images.sort(reverse=True, key=lambda x: x[0])
+        logger.debug(f"Found profile hint image (score={scored_images[0][0]}): {scored_images[0][1]}")
+        return scored_images[0][1]
+    
+    # Strategy 4: Google/CDN hosted images
+    if page_text:
+        cdn_patterns = [
+            r'https?://lh3\.googleusercontent\.com/[^\s"\'<>]+',
+            r'https?://[^\s"\'<>]*gstatic\.com/[^\s"\'<>]+',
+            r'https?://[^\s"\'<>]*encrypted-tbn0[^\s"\'<>]+',
+            r'https?://upload\.wikimedia\.org/[^\s"\'<>]+\.(?:jpg|jpeg|png|webp)',
+        ]
+        for pattern in cdn_patterns:
+            match = re.search(pattern, page_text)
+            if match:
+                url = match.group(0).rstrip('",')
+                logger.debug(f"Found CDN image: {url}")
+                return url
+    
+    # Strategy 5: Largest image (last resort)
+    largest = None
+    max_area = 0
+    
+    for img in soup.find_all("img", limit=30):
+        src = img.get("src") or img.get("data-src")
+        if not src or src.startswith("data:"):
+            continue
+        
+        try:
+            width = int(img.get("width") or 200)
+            height = int(img.get("height") or 200)
+            area = width * height
+            
+            if area > max_area and area > 10000:
+                max_area = area
+                largest = urljoin(base_url, src)
+        except (ValueError, TypeError):
+            continue
+    
+    if largest:
+        logger.debug(f"Found largest image: {largest}")
+        return largest
+    
+    return None
+
+def _extract_social_links(soup: BeautifulSoup, base_url: str, page_text: str = "") -> List[Dict[str, str]]:
+    """
+    Enhanced social media link extraction with multiple strategies.
+    """
+    found_links = []
+    seen_handles = set()
+    
+    # Strategy 1: Extract from anchor tags
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
-        if not href:
-            continue
-            
-        # Convert relative URLs to absolute
+        
         if href.startswith("/"):
             href = urljoin(base_url, href)
-            
-        # Clean up social URLs
-        for domain, pattern in social_patterns.items():
-            if domain in href.lower():
+        
+        for platform, patterns in SOCIAL_MEDIA_PATTERNS.items():
+            for pattern in patterns:
                 match = re.search(pattern, href, re.I)
                 if match:
-                    clean_url = f"https://{domain}/{match.group(1)}"
-                    social.add(clean_url)
+                    handle = match.group(1)
+                    handle = re.sub(r'[^a-zA-Z0-9_-]', '', handle)
+                    
+                    # Skip common non-profile patterns
+                    skip_words = ["share", "intent", "home", "explore", "login", "signup", "sharer", "hashtag", 
+                                  "privacy", "terms", "help", "about", "404", "search"]
+                    if handle.lower() in skip_words or len(handle) < 2:
+                        continue
+                    
+                    key = f"{platform}:{handle.lower()}"
+                    if key not in seen_handles:
+                        seen_handles.add(key)
+                        found_links.append({
+                            "platform": platform,
+                            "handle": handle,
+                            "url": href,
+                        })
                     break
     
-    out["social_links"] = list(social)
+    # Strategy 2: Extract from page text (for @ mentions)
+    if page_text:
+        # Twitter handles
+        twitter_mentions = re.findall(r'@([a-zA-Z0-9_]{1,15})\b', page_text)
+        for handle in twitter_mentions:
+            if len(handle) > 2 and handle.lower() not in ["twitter", "follow", "share"]:
+                key = f"twitter:{handle.lower()}"
+                if key not in seen_handles:
+                    seen_handles.add(key)
+                    found_links.append({
+                        "platform": "twitter",
+                        "handle": handle,
+                        "url": f"https://twitter.com/{handle}",
+                    })
+    
+    # Strategy 3: Look for social icons with aria-labels
+    social_icon_patterns = {
+        "twitter": ["twitter", "tweet"],
+        "facebook": ["facebook", "fb"],
+        "instagram": ["instagram", "insta"],
+        "linkedin": ["linkedin"],
+        "youtube": ["youtube", "yt"],
+    }
+    
+    for icon_link in soup.find_all("a", {"aria-label": True}):
+        label = icon_link.get("aria-label", "").lower()
+        href = icon_link.get("href", "")
+        
+        for platform, keywords in social_icon_patterns.items():
+            if any(kw in label for kw in keywords) and href:
+                for pattern in SOCIAL_MEDIA_PATTERNS.get(platform, []):
+                    match = re.search(pattern, href, re.I)
+                    if match:
+                        handle = match.group(1)
+                        key = f"{platform}:{handle.lower()}"
+                        if key not in seen_handles:
+                            seen_handles.add(key)
+                            found_links.append({
+                                "platform": platform,
+                                "handle": handle,
+                                "url": href,
+                            })
+                        break
+    
+    return found_links
 
-    # Article links extraction (improved)
-    article_links: Set[str] = set()
+def _extract_contact_info(soup: BeautifulSoup) -> Dict[str, List[str]]:
+    """Extract emails and phone numbers."""
+    
+    page_text = soup.get_text(" ", strip=True)
+    
+    # Email extraction
+    emails = set(re.findall(
+        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        page_text
+    ))
+    
+    # Filter out common non-personal emails
+    emails = {e for e in emails if not any(x in e.lower() for x in ["noreply", "info@", "contact@", "support@"])}
+    
+    # Phone extraction (international + Indian)
+    phones = set(re.findall(
+        r'(?:\+91|0)?[6-9]\d{9}',
+        page_text
+    ))
+    
+    return {
+        "emails": list(emails)[:5],
+        "phones": list(phones)[:3]
+    }
+
+def _extract_bio_and_description(soup: BeautifulSoup, name: str) -> Optional[str]:
+    """Extract biography or description text."""
+    
+    # Look for common bio containers
+    bio_selectors = [
+        'div[class*="bio"]',
+        'div[class*="about"]',
+        'div[class*="description"]',
+        'div[class*="author-bio"]',
+        'section[class*="bio"]',
+        'section[class*="about"]',
+        'p[class*="bio"]',
+        'div[itemprop="description"]',
+    ]
+    
+    for selector in bio_selectors:
+        elements = soup.select(selector)
+        for elem in elements:
+            text = elem.get_text(" ", strip=True)
+            if name_in_text(name, text) and len(text) > 100:
+                return _clean_text(text)[:1500]
+    
+    # Fallback: paragraphs mentioning the name
+    paragraphs = []
+    for p in soup.find_all("p", limit=20):
+        text = p.get_text(" ", strip=True)
+        if len(text) > 50 and name_in_text(name, text):
+            paragraphs.append(text)
+            if len(" ".join(paragraphs)) > 800:
+                break
+    
+    if paragraphs:
+        return _clean_text(" ".join(paragraphs))[:1500]
+    
+    return None
+
+def _extract_awards(soup: BeautifulSoup, page_text: str, name: str) -> List[Dict[str, str]]:
+    """
+    Extract awards and recognitions from page content.
+    """
+    awards = []
+    seen_awards = set()
+    
+    # Search for award patterns
+    for pattern in AWARD_PATTERNS:
+        matches = re.finditer(pattern, page_text, re.I)
+        for match in matches:
+            award_text = match.group(0)
+            
+            # Get context around the award mention
+            start = max(0, match.start() - 200)
+            end = min(len(page_text), match.end() + 200)
+            context = page_text[start:end]
+            
+            # Check if the name is mentioned near the award
+            if name_in_text(name, context):
+                award_clean = _clean_text(award_text)
+                if award_clean.lower() not in seen_awards:
+                    seen_awards.add(award_clean.lower())
+                    
+                    # Try to extract year
+                    year_match = re.search(r'\b(19|20)\d{2}\b', context)
+                    year = year_match.group(0) if year_match else None
+                    
+                    awards.append({
+                        "name": award_clean,
+                        "year": year,
+                        "context": _get_snippet(context, 150)
+                    })
+    
+    # Look for general award mentions
+    award_indicators = [
+        r"received.*?award",
+        r"won.*?(?:award|prize|honor)",
+        r"honored with",
+        r"recipient of",
+        r"awarded.*?(?:for|by)"
+    ]
+    
+    for indicator in award_indicators:
+        matches = re.finditer(indicator, page_text, re.I)
+        for match in matches:
+            start = max(0, match.start() - 50)
+            end = min(len(page_text), match.end() + 150)
+            context = page_text[start:end]
+            
+            if name_in_text(name, context):
+                # Extract potential award name
+                award_sentence = _get_snippet(context, 200)
+                if award_sentence and len(awards) < 10:
+                    awards.append({
+                        "name": "Recognition",
+                        "year": None,
+                        "context": award_sentence
+                    })
+    
+    return awards[:10]  # Limit to 10 awards
+
+def _extract_political_affiliation(text: str) -> Dict[str, Any]:
+    """
+    Analyze text for political affiliation indicators.
+    """
+    text_lower = text.lower()
+    
+    affiliation_scores = defaultdict(int)
+    
+    for party, keywords in POLITICAL_AFFILIATION_KEYWORDS.items():
+        for keyword in keywords:
+            count = text_lower.count(keyword.lower())
+            affiliation_scores[party] += count
+    
+    # Find dominant affiliation
+    if affiliation_scores:
+        dominant = max(affiliation_scores.items(), key=lambda x: x[1])
+        if dominant[1] >= 2:  # At least 2 mentions
+            return {
+                "affiliation": dominant[0],
+                "confidence": min(dominant[1] * 10, 100),
+                "all_scores": dict(affiliation_scores)
+            }
+    
+    return {
+        "affiliation": "unknown",
+        "confidence": 0,
+        "all_scores": dict(affiliation_scores)
+    }
+
+def _extract_articles_and_bylines(soup: BeautifulSoup, base_url: str) -> List[str]:
+    """Extract article links."""
+    
+    articles = set()
     article_patterns = [
-        r"/\d{4}/\d{2}/",  # Date-based URLs
-        r"/article/",
-        r"/news/",
-        r"/story/",
-        r"/author/",
-        r"/byline/",
-        r"/profile/",
-        r"/about/"
+        r"/\d{4}/\d{2}/",
+        r"/(article|story|news|blog|post|opinion|analysis|report)/",
     ]
     
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         if not href or href.startswith("#"):
             continue
-            
+        
         full_url = urljoin(base_url, href)
         
-        # Check URL patterns
-        if any(re.search(p, full_url, re.I) for p in article_patterns):
-            article_links.add(full_url)
-            
-        # Check link text for article indicators
-        link_text = a.get_text(" ", strip=True).lower()
-        if any(w in link_text for w in ["read more", "full article", "continue reading"]):
-            article_links.add(full_url)
-
-    out["article_links"] = list(article_links)
+        if any(re.search(pattern, full_url, re.I) for pattern in article_patterns):
+            articles.add(full_url)
     
-    # Log extraction results
-    logger.debug(f"Extracted from {base_url}:")
-    logger.debug(f"- Image: {bool(out['image'])}")
-    logger.debug(f"- Social links: {len(out['social_links'])}")
-    logger.debug(f"- Article links: {len(out['article_links'])}")
+    return list(articles)[:50]
+
+def _extract_publish_date(soup: BeautifulSoup, page_text: str) -> Optional[str]:
+    """Extract article publish date."""
     
-    return out
-def _extract_publish_date_from_meta_or_jsonld(meta_dict: Dict[str, Any], page_text: str) -> Optional[str]:
-    """
-    Simple heuristics: look into json_ld, meta tags, or datePublished field patterns in page.
-    Returns ISO-like string or None.
-    """
-    # 1) try json_ld quick regex for "datePublished"
-    json_ld = meta_dict.get("json_ld")
-    if json_ld:
-        m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', json_ld)
-        if m:
-            return m.group(1)
-        m2 = re.search(r'"dateCreated"\s*:\s*"([^"]+)"', json_ld)
-        if m2:
-            return m2.group(1)
-
-    # 2) common meta tags
-    for key in ("article:published_time", "publication_date", "pubdate", "date"):
-        # search meta property or meta name
-        m = re.search(rf'<meta[^>]+(?:property|name)=["\']{re.escape(key)}["\'][^>]+content=["\']([^"\']+)["\']', page_text, re.I)
-        if m:
-            return m.group(1)
-
-    # 3) loose ISO date pattern in page text (first match)
-    m = re.search(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)', page_text)
-    if m:
-        return m.group(1)
-    # date like YYYY-MM-DD
-    m2 = re.search(r'(\d{4}-\d{2}-\d{2})', page_text)
-    if m2:
-        return m2.group(1)
-    return None
-
-
-def _analyze_tone_and_controversy(texts: List[str], name: str) -> Dict[str, Any]:
-    """
-    Lightweight heuristics across aggregated texts:
-    - tone_score: ratio of emotional keywords to words (0..1)
-    - controversy_snippets: sentences containing controversy keywords
-    - bias_hint: simple heuristic counting left/right keywords
-    """
-    joined = " ".join([t or "" for t in texts])
-    low = joined.lower()
-    total_words = max(1, len(re.findall(r"\w+", low)))
-    emotional_count = sum(low.count(k) for k in EMOTIONAL_KEYWORDS)
-    tone_score = round(emotional_count / total_words, 5)
-
-    # controversy detection: extract sentences with keywords
-    controversy_sentences = []
-    sentences = re.split(r'(?<=[.!?])\s+', joined)
-    for s in sentences:
-        for k in CONTROVERSY_KEYWORDS:
-            if k in s.lower():
-                controversy_sentences.append(_clean_text(s))
-                break
-
-    # bias hint: naive counts
-    left_count = sum(low.count(k) for k in LEFT_KEYWORDS)
-    right_count = sum(low.count(k) for k in RIGHT_KEYWORDS)
-    if left_count > right_count and left_count >= 2:
-        bias_hint = "left-leaning"
-    elif right_count > left_count and right_count >= 2:
-        bias_hint = "right-leaning"
-    else:
-        bias_hint = "unclear"
-
-    # influence indicator: number of unique domains & social links
-    domains = set(re.findall(r"https?://([^/]+)", joined))
-    influence_level = "Low"
-    if len(domains) >= 5:
-        influence_level = "High"
-    elif len(domains) >= 2:
-        influence_level = "Moderate"
-
-    return {
-        "tone_score": tone_score,
-        "controversy_snippets": controversy_sentences,
-        "bias_hint": bias_hint,
-        "left_keyword_count": left_count,
-        "right_keyword_count": right_count,
-        "influence_level": influence_level
-    }
-
-    # ideology / political leaning inference
-    ideology_hint = None
-    ideolog_phrases = {
-        "left-leaning": ["leftist", "liberal", "progressive", "secular voice", "critic of government"],
-        "right-leaning": ["nationalist", "pro-government", "hindutva", "right-wing", "rss supporter"],
-        "centrist": ["neutral", "balanced", "non-partisan"]
-    }
-    lower_text = page_text.lower()
-    for label, keys in ideolog_phrases.items():
-        if any(k in lower_text for k in keys):
-            ideology_hint = label
-            break
-
-    result["ideology_hint"] = ideology_hint
-
-# ----------------- page processing -----------------
-async def _process_page(client: httpx.AsyncClient, url: str, name: str) -> Optional[Dict[str, Any]]:
-    """Fetch page, extract meta + content snippet + candidate article links + author presence."""
-    resp = await _fetch_text(client, url)
-    if not resp:
-        logger.debug("No response for %s", url)
-        return None
-
-    status = resp.status_code
-    domain = urlparse(url).netloc.replace("www.", "").lower()
-    if status != 200:
-        logger.debug("Non-200 %s -> %s", status, url)
-        return {"source": url, "domain": domain, "error_status": status}
-
-    page_text = resp.text or ""
-    soup = BeautifulSoup(page_text, "html.parser")
-    base = url
-    meta = _extract_meta(soup, base)
-
-    # content blob (first N paragraphs)
-    paras = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
-    content = " ".join(paras[:40])
-    snippet = _get_snippet(meta.get("meta_description") or content[:400])
-
-    # author verification heuristics (more robust)
-    author_verified = False
-    # 1) meta author match
-    if meta.get("meta_author") and name_in_text(name, meta.get("meta_author")):
-        author_verified = True
-
-    # 2) json-ld author fields
-    json_ld = meta.get("json_ld") or ""
-    if json_ld and name_in_text(name, json_ld):
-        author_verified = True
-
-    # 3) byline in top headings / by <name>
-    if not author_verified:
-        top_texts = []
-        if soup.title and soup.title.string:
-            top_texts.append(soup.title.string)
-        for tag in soup.find_all(["h1", "h2"], limit=8):
-            if tag and tag.get_text():
-                top_texts.append(tag.get_text(" ", strip=True))
-        top_blob = " ".join(top_texts + [snippet[:1000]])
-        if re.search(r"\bby\s+" + re.escape(name.split()[0]), top_blob, re.I) and name_in_text(name, top_blob):
-            author_verified = True
-
-    # 4) full page name presence
-    if not author_verified and name_in_text(name, page_text):
-        author_verified = True
-
-    publish_date = _extract_publish_date_from_meta_or_jsonld(meta, page_text)
-
-    result = {
-        "title": meta.get("title") or (snippet[:80] if snippet else "Untitled"),
-        "link": url,
-        "domain": domain,
-        "snippet": snippet,
-        "content": (content[:MAX_CONTENT_CHARS] if content else None),
-        "meta_author": meta.get("meta_author"),
-        "profile_image": meta.get("image"),
-        "bio_section": meta.get("bio_section"),
-        "social": meta.get("social_links"),
-        "emails": meta.get("emails"),
-        "candidate_article_links": meta.get("candidate_article_links", []),
-        "author_verified": author_verified,
-        "publish_date": publish_date,
-        "error_status": None,
-    }
-    return result
-async def _fetch_with_retry(client: httpx.AsyncClient, url: str, max_retries: int = 3) -> Optional[httpx.Response]:
-    """Fetch URL with retries and exponential backoff."""
-    for attempt in range(max_retries):
-        try:
-            headers = {
-                "User-Agent": USER_AGENTS[hash(url) % len(USER_AGENTS)],
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            }
-            response = await client.get(
-                url, 
-                headers=headers,
-                timeout=15,
-                follow_redirects=True
-            )
-            
-            if response.status_code == 200:
-                return response
-                
-            if response.status_code in [429, 503]:  # Rate limited
-                wait_time = (2 ** attempt) + random.random()
-                logger.warning(f"Rate limited on {url}, waiting {wait_time}s")
-                await asyncio.sleep(wait_time)
-                continue
-                
-        except Exception as e:
-            logger.debug(f"Fetch error {url} (attempt {attempt+1}): {str(e)}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(1)
-            continue
-            
-    return None
-
-# ----------------- public function -----------------
-async def fetch_journalist_data(name: str, extra_sites: Optional[List[str]] = None, max_results: int = 60) -> Dict[str, Any]:
-    """
-    Async pipeline:
-    1. Discover links via SerpApi (if available) + extra_sites
-    2. Fetch discovered links concurrently
-    3. Extract profile info, candidate article links, content
-    4. Run light analysis (tone/bias/controversy) over aggregated text
-    Returns structured dict with:
-      - name, query, links_scanned
-      - profiles_found (rich dicts)
-      - articles (list of article objects with verification flags)
-      - analysis: tone_score, bias_hint, controversy_snippets
-      - raw_pages: array for debugging
-    """
-    if not name or not name.strip():
-        raise ValueError("Name required")
-
-    normalized = name.strip()
-    query = f'"{normalized}" author OR "by {normalized}" OR "{normalized} profile"'
-    logger.info("Searching for: %s", query)
-
-    # discover
-    discovered = await serpapi_search(query, num=min(50, max_results))
-    if extra_sites:
-        for s in extra_sites:
-            if s not in discovered:
-                discovered.append(s)
-
-    # fallback seeds if discovery failed or limited
-    if not discovered:
-        guess = normalized.replace(" ", "-").lower()
-        discovered = [
-            f"https://en.wikipedia.org/wiki/{guess}",
-            f"https://www.imdb.com/find?q={quote_plus(normalized)}",
-            f"https://www.google.com/search?q={quote_plus(normalized)}",
-            f"https://starsunfolded.com/{quote_plus(normalized.replace(' ', '-'))}"
-        ]
-
-    # dedupe keep order, cap results
-    seen: Set[str] = set()
-    links: List[str] = []
-    for l in discovered:
-        if not l:
-            continue
-        if l in seen:
-            continue
-        seen.add(l)
-        links.append(l)
-        if len(links) >= max_results:
-            break
-
-    # concurrently fetch pages
-    sem = asyncio.Semaphore(DEFAULT_CONCURRENCY)
-    async with httpx.AsyncClient(timeout=25, limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)) as client:
-        async def worker(u):
-            async with sem:
-                logger.info("Scraping %s", u)
-                res = await _process_page(client, u, normalized)
-                await asyncio.sleep(DEFAULT_DELAY)
-                return res
-
-        tasks = [asyncio.create_task(worker(u)) for u in links]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    pages: List[Dict[str, Any]] = []
-    for res in results:
-        if isinstance(res, Exception):
-            logger.debug("worker exception: %s", res)
-            continue
-        if not res:
-            continue
-        pages.append(res)
-
-    # build articles & profiles
-    verified = [p for p in pages if p.get("author_verified")]
-    unverified = [p for p in pages if not p.get("author_verified")]
-
-    # profile selection (prioritize verified & profile-like domains)
-    profile = None
-    if verified:
-        # pick the verified page with the richest bio image or social links
-        verified_sorted = sorted(verified, key=lambda x: (bool(x.get("profile_image")), len(x.get("social") or []), bool(x.get("bio_section"))), reverse=True)
-        profile = verified_sorted[0]
-    else:
-        # heuristics: wikipedia/imdb/starsunfolded first
-        for p in pages:
-            dom = (p.get("domain") or "").lower()
-            if any(x in dom for x in ("wikipedia.org", "imdb.com", "starsunfolded", "khojstudios")):
-                profile = p
-                break
-    profile = profile or (pages[0] if pages else None)
-
-    # prepare article list
-    def to_article_obj(p: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            "title": p.get("title"),
-            "link": p.get("link"),
-            "source": p.get("domain"),
-            "snippet": p.get("snippet"),
-            "author_verified": bool(p.get("author_verified")),
-            "publish_date": p.get("publish_date"),
-            "content_preview": (p.get("content")[:MAX_CONTENT_CHARS] if p.get("content") else None),
-            "social": p.get("social"),
-            "emails": p.get("emails"),
-        }
-
-    articles = [to_article_obj(p) for p in verified] + [to_article_obj(p) for p in unverified]
-
-    # attempt to expand candidate article links (follow internal candidate_article_links for author pages)
-    # For performance, follow only candidate links from verified pages (bounded)
-    extra_article_links: Set[str] = set()
-    follow_limit_per_site = 8
-    async with httpx.AsyncClient(timeout=20) as client:
-        for p in (verified or pages[:3]):  # prefer verified pages; fallback to first 3
-            cand = p.get("candidate_article_links") or []
-            cnt = 0
-            for l in cand:
-                if cnt >= follow_limit_per_site:
-                    break
-                if l in seen:
-                    continue
-                seen.add(l)
-                try:
-                    logger.info("Following candidate article link %s", l)
-                    r = await _fetch_text(client, l)
-                    if r and r.status_code == 200 and r.text:
-                        soup = BeautifulSoup(r.text, "html.parser")
-                        meta = _extract_meta(soup, l)
-                        paras = [pg.get_text(" ", strip=True) for pg in soup.find_all("p")]
-                        content = " ".join(paras[:40])
-                        snippet = _get_snippet(meta.get("meta_description") or content[:400])
-                        publish_date = _extract_publish_date_from_meta_or_jsonld(meta, r.text)
-                        article_obj = {
-                            "title": meta.get("title") or snippet[:80],
-                            "link": l,
-                            "source": urlparse(l).netloc.replace("www.", ""),
-                            "snippet": snippet,
-                            "author_verified": name_in_text(name, meta.get("meta_author") or "") or name_in_text(name, r.text),
-                            "publish_date": publish_date,
-                            "content_preview": (content[:MAX_CONTENT_CHARS] if content else None),
-                            "social": meta.get("social_links"),
-                        }
-                        # append if not duplicate link
-                        if not any(a["link"] == l for a in articles):
-                            articles.append(article_obj)
-                    cnt += 1
-                    await asyncio.sleep(DEFAULT_DELAY)
-                except Exception as e:
-                    logger.debug("follow link err %s -> %s", l, e)
-                    continue
-
-    # run light analysis across content snippets
-    aggregated_texts = [a.get("content_preview") or a.get("snippet") or "" for a in articles]
-    analysis = _analyze_tone_and_controversy(aggregated_texts, normalized)
-
-    # enrich profile with merged fields
-    merged_profile = {
-        "source": profile.get("link") if profile else None,
-        "domain": profile.get("domain") if profile else None,
-        "bio": profile.get("bio_section") if profile else None,
-        "profile_image": profile.get("profile_image") if profile else None,
-        "social": profile.get("social") if profile else [],
-        "emails": profile.get("emails") if profile else [],
-    } if profile else {}
-
-    return {
-        "name": normalized,
-        "query": query,
-        "links_scanned": len(links),
-        "profiles_found": [merged_profile] if merged_profile else [],
-        "articles": articles,
-        "analysis": analysis,
-        "raw_pages": pages,
-    }
-def _extract_image(soup: BeautifulSoup, base_url: str) -> Optional[str]:
-    """Extract the most probable profile image using multiple strategies."""
-    # 1️⃣ Meta tags (OpenGraph / Twitter)
-    meta_props = [
-        {"property": "og:image"},
-        {"name": "og:image"},
-        {"property": "twitter:image"},
-        {"name": "twitter:image"},
+    date_meta_names = [
+        "article:published_time",
+        "datePublished",
+        "publishDate",
+        "date",
+        "pubdate",
+        "publication_date",
+        "DC.date.issued",
     ]
-    for attrs in meta_props:
-        m = soup.find("meta", attrs=attrs)
-        if m and m.get("content"):
-            return urljoin(base_url, m["content"])
-
-    # 2️⃣ Inline image tags with relevant hints
-    for img in soup.find_all("img"):
-        src = (
-            img.get("src")
-            or img.get("data-src")
-            or img.get("data-lazy")
-            or img.get("data-original")
-        )
-        if not src:
-            continue
-        alt = (img.get("alt") or "").lower()
-        cls = " ".join(img.get("class") or []).lower()
-        if any(k in src.lower() for k in ["profile", "avatar", "author", "bio", "face"]) or \
-           any(k in alt for k in ["profile", "journalist", "author", "reporter"]) or \
-           any(k in cls for k in ["profile", "avatar", "author", "bio"]):
-            return urljoin(base_url, src)
-
-    # 3️⃣ noscript fallback (common in lazy-loaded images)
-    for ns in soup.find_all("noscript"):
-        if "img" in ns.text:
-            match = re.search(r'src=["\']([^"\']+)["\']', ns.text)
-            if match:
-                return urljoin(base_url, match.group(1))
-
-    # 4️⃣ JSON-LD structured data (schema.org)
+    
+    for name in date_meta_names:
+        for attr in ["property", "name", "itemprop"]:
+            tag = soup.find("meta", {attr: name})
+            if tag and tag.get("content"):
+                return tag["content"]
+    
+    # JSON-LD
     for script in soup.find_all("script", type="application/ld+json"):
         try:
-            data = json.loads(script.text)
-            if isinstance(data, dict) and "image" in data:
-                if isinstance(data["image"], str):
-                    return urljoin(base_url, data["image"])
-                elif isinstance(data["image"], list) and data["image"]:
-                    return urljoin(base_url, data["image"][0])
-        except Exception:
-            continue
-
-    # 5️⃣ Fallback: first large image on the page
-    imgs = soup.find_all("img")
-    if imgs:
-        biggest = max(imgs, key=lambda i: int(i.get("width") or 0) * int(i.get("height") or 0))
-        src = (
-            biggest.get("src")
-            or biggest.get("data-src")
-            or biggest.get("data-original")
-            or biggest.get("data-lazy")
-        )
-        if src:
-            return urljoin(base_url, src)
-
+            data = json.loads(script.string or "{}")
+            if isinstance(data, dict):
+                date = data.get("datePublished") or data.get("dateCreated")
+                if date:
+                    return date
+        except:
+            pass
+    
+    # Time tag
+    time_tag = soup.find("time")
+    if time_tag:
+        return time_tag.get("datetime") or time_tag.get_text(strip=True)
+    
+    # Pattern matching
+    iso_date = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}', page_text)
+    if iso_date:
+        return iso_date.group(0)
+    
+    simple_date = re.search(r'\d{4}-\d{2}-\d{2}', page_text)
+    if simple_date:
+        return simple_date.group(0)
+    
     return None
 
+# ============================================================================
+# CONTENT ANALYSIS
+# ============================================================================
 
-# Sync wrapper for backwards compatibility
-def fetch_journalist_data_sync(name: str, extra_sites: Optional[List[str]] = None, max_results: int = 60) -> Dict[str, Any]:
-    import asyncio
-    return asyncio.run(fetch_journalist_data(name=name, extra_sites=extra_sites, max_results=max_results))
+def _analyze_content_quality(text: str) -> Dict[str, Any]:
+    """Analyze content quality."""
+    
+    if not text:
+        return {"quality_score": 0, "indicators": []}
+    
+    words = re.findall(r'\b\w+\b', text.lower())
+    total_words = len(words)
+    
+    if total_words == 0:
+        return {"quality_score": 0, "indicators": []}
+    
+    sentences = re.split(r'[.!?]+', text)
+    num_sentences = len([s for s in sentences if len(s.strip()) > 10])
+    
+    avg_word_length = sum(len(w) for w in words) / total_words
+    avg_sentence_length = total_words / num_sentences if num_sentences > 0 else 0
+    
+    indicators = []
+    quality_score = 5
+    
+    if total_words > 300:
+        indicators.append("substantial_content")
+        quality_score += 2
+    
+    if 15 < avg_sentence_length < 30:
+        indicators.append("readable_sentences")
+        quality_score += 1
+    
+    if avg_word_length > 4.5:
+        indicators.append("sophisticated_vocabulary")
+        quality_score += 1
+    
+    if re.search(r'\b(according to|sources?|reported|cited|research|study|data shows)\b', text, re.I):
+        indicators.append("cited_sources")
+        quality_score += 2
+    
+    return {
+        "quality_score": min(quality_score, 10),
+        "total_words": total_words,
+        "num_sentences": num_sentences,
+        "indicators": indicators,
+    }
 
+def _analyze_tone_and_bias(texts: List[str], name: str) -> Dict[str, Any]:
+    """
+    Enhanced comprehensive tone and bias analysis with political affiliation detection.
+    """
+    
+    if not texts:
+        return {
+            "tone_score": 0,
+            "bias_label": "unknown",
+            "controversy_score": 0,
+            "credibility_score": 5,
+            "political_affiliation": {"affiliation": "unknown", "confidence": 0}
+        }
+    
+    combined = " ".join([t for t in texts if t]).lower()
+    words = re.findall(r'\b\w+\b', combined)
+    total_words = max(len(words), 1)
+    
+    # Emotional tone
+    emotion_score = 0
+    emotion_breakdown = defaultdict(int)
+    
+    for level, keywords in EMOTIONAL_KEYWORDS.items():
+        count = sum(combined.count(k) for k in keywords)
+        emotion_breakdown[level] = count
+        if level == "high":
+            emotion_score += count * 3
+        elif level == "medium":
+            emotion_score += count * 2
+        else:
+            emotion_score += count
+    
+    tone_score = min((emotion_score / total_words) * 100, 10)
+    
+    # Enhanced bias detection
+    bias_scores = {}
+    for bias_type, keywords in BIAS_KEYWORDS.items():
+        count = sum(combined.count(k.lower()) for k in keywords)
+        bias_scores[bias_type] = count
+    
+    if bias_scores:
+        # Get top 2 bias types
+        sorted_biases = sorted(bias_scores.items(), key=lambda x: x[1], reverse=True)
+        if sorted_biases[0][1] >= 3:
+            bias_label = sorted_biases[0][0]
+            # If close second, mark as mixed
+            if len(sorted_biases) > 1 and sorted_biases[1][1] >= sorted_biases[0][1] * 0.6:
+                bias_label = f"{sorted_biases[0][0]}/{sorted_biases[1][0]}"
+        else:
+            bias_label = "centrist"
+    else:
+        bias_label = "centrist"
+    
+    # Political affiliation analysis
+    political_affiliation = _extract_political_affiliation(combined)
+    
+    # Controversy
+    controversy_score = 0
+    controversy_snippets = []
+    
+    sentences = re.split(r'[.!?]+', combined)
+    for sentence in sentences[:100]:
+        sentence_clean = sentence.strip()
+        if len(sentence_clean) < 20:
+            continue
+        
+        for level, keywords in CONTROVERSY_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in sentence_clean:
+                    if level == "strong":
+                        controversy_score += 3
+                    elif level == "medium":
+                        controversy_score += 2
+                    else:
+                        controversy_score += 1
+                    
+                    if len(controversy_snippets) < 10:
+                        controversy_snippets.append({
+                            "text": sentence_clean[:200],
+                            "keyword": keyword,
+                            "severity": level
+                        })
+                    break
+    
+    # Credibility
+    credibility_score = 5
+    cred_indicators = []
+    
+    for indicator_type, keywords in CREDIBILITY_INDICATORS.items():
+        for keyword in keywords:
+            if keyword in combined:
+                if indicator_type == "positive":
+                    credibility_score += 1
+                    cred_indicators.append(f"+{keyword}")
+                else:
+                    credibility_score -= 1
+                    cred_indicators.append(f"-{keyword}")
+    
+    credibility_score = max(0, min(credibility_score, 10))
+    
+    return {
+        "tone_score": round(tone_score, 2),
+        "emotion_breakdown": dict(emotion_breakdown),
+        "bias_label": bias_label,
+        "bias_scores": bias_scores,
+        "political_affiliation": political_affiliation,
+        "controversy_score": min(controversy_score, 10),
+        "controversy_snippets": controversy_snippets,
+        "credibility_score": credibility_score,
+        "credibility_indicators": cred_indicators,
+    }
 
-# Quick dev run
+# ============================================================================
+# PAGE PROCESSING
+# ============================================================================
+
+async def _process_page(
+    client: httpx.AsyncClient,
+    url: str,
+    name: str,
+    rank: int = 0
+) -> Optional[Dict[str, Any]]:
+    """Process a single page and extract all data."""
+    
+    logger.info(f"Processing: {url}")
+    
+    response = await _fetch_with_retry(client, url)
+    if not response or response.status_code != 200:
+        return {
+            "url": url,
+            "domain": urlparse(url).netloc.replace("www.", ""),
+            "error": "fetch_failed",
+        }
+    
+    try:
+        page_text = response.text
+        soup = BeautifulSoup(page_text, "html.parser")
+        base_url = str(response.url)
+        domain = urlparse(base_url).netloc.replace("www.", "")
+        
+        # Extract components
+        title = _clean_text(soup.title.string) if soup.title else None
+        profile_image = _extract_profile_image(soup, base_url, page_text)
+        social_links = _extract_social_links(soup, base_url, page_text)  
+        article_links = _extract_articles_and_bylines(soup, base_url)
+        contact = _extract_contact_info(soup)
+        bio = _extract_bio_and_description(soup, name)
+        publish_date = _extract_publish_date(soup, page_text)
+        
+        # Extract awards from this page
+        awards = _extract_awards(soup, page_text, name)
+        
+        # Content
+        paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p", limit=50)]
+        content = " ".join(paragraphs)
+        
+        # Meta
+        desc_tag = soup.find("meta", {"name": "description"}) or soup.find("meta", {"property": "og:description"})
+        meta_description = desc_tag.get("content") if desc_tag else None
+        snippet = _get_snippet(meta_description or content)
+        
+        author_meta = soup.find("meta", {"name": "author"})
+        meta_author = author_meta.get("content") if author_meta else None
+        
+        # Author verification
+        author_verified = False
+        verification_method = None
+        
+        if meta_author and name_in_text(name, meta_author):
+            author_verified = True
+            verification_method = "meta_tag"
+        elif bio and name_in_text(name, bio):
+            author_verified = True
+            verification_method = "bio_section"
+        elif re.search(rf'\bby\s+{re.escape(name.split()[0])}', page_text, re.I):
+            if name_in_text(name, page_text):
+                author_verified = True
+                verification_method = "byline_pattern"
+        elif name_in_text(name, page_text):
+            author_verified = True
+            verification_method = "content_mention"
+        
+        # Analysis
+        quality = _analyze_content_quality(content)
+        trust_score = _calculate_domain_trust_score(domain)
+        
+        result = {
+            "url": base_url,
+            "domain": domain,
+            "rank": rank,
+            "title": title,
+            "snippet": snippet,
+            "content": content[:MAX_CONTENT_CHARS] if content else None,
+            "profile_image": profile_image,
+            "bio": bio,
+            "social_links": social_links,
+            "emails": contact["emails"],
+            "phones": contact["phones"],
+            "article_links": article_links,
+            "publish_date": publish_date,
+            "awards": awards,  
+            "author_verified": author_verified,
+            "verification_method": verification_method,
+            "domain_trust_score": trust_score,
+            "content_quality": quality,
+            "meta_author": meta_author,
+            "fetched_at": datetime.utcnow().isoformat(),
+        }
+        
+        logger.info(f"✓ Processed {domain} - Verified: {author_verified}, Trust: {trust_score}/10, Awards: {len(awards)}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error processing {url}: {str(e)}")
+        return {
+            "url": url,
+            "domain": urlparse(url).netloc.replace("www.", ""),
+            "error": str(e),
+        }
+
+# ============================================================================
+# MAIN ORCHESTRATION
+# ============================================================================
+
+async def fetch_journalist_data(
+    name: str,
+    extra_sites: Optional[List[str]] = None,
+    max_results: int = 60,
+    run_ai: bool = False
+) -> Dict[str, Any]:
+    """
+    Main function to fetch comprehensive journalist data.
+    
+    Returns complete profile with:
+    - Primary profile (bio, image, social, contact)
+    - Articles list
+    - Tone, bias, controversy, credibility analysis
+    - Raw scraped data
+    """
+    
+    if not name or not name.strip():
+        raise ValueError("Journalist name is required")
+    
+    start_time = datetime.utcnow()
+    normalized_name = _clean_text(name)
+    
+    logger.info("=" * 80)
+    logger.info(f"🔍 Fetching data for: {normalized_name}")
+    logger.info("=" * 80)
+    
+    # Step 1: Discovery
+    # Enhanced: multi-query discovery for political, awards, controversy, socials, biography, etc.
+    discovered_urls = await serpapi_multi_query_search(normalized_name, max_per_query=min(10, max_results // 8))
+    
+    if extra_sites:
+        discovered_urls.extend(extra_sites)
+    
+    if not discovered_urls:
+        name_slug = normalized_name.lower().replace(" ", "-")
+        discovered_urls = [
+            f"https://en.wikipedia.org/wiki/{name_slug}",
+            f"https://www.google.com/search?q={quote_plus(normalized_name)}+journalist",
+            f"https://twitter.com/{name_slug}",
+            f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(normalized_name)}",
+        ]
+    
+    # Deduplicate
+    seen_urls = set()
+    urls_to_process = []
+    for url in discovered_urls:
+        if url not in seen_urls and len(urls_to_process) < max_results:
+            seen_urls.add(url)
+            urls_to_process.append(url)
+    
+    logger.info(f"📋 Discovered {len(urls_to_process)} URLs to process")
+    
+    # Step 2: Concurrent scraping
+    semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
+    
+    async def worker(url, idx):
+        async with semaphore:
+            result = await _process_page(client, url, normalized_name, rank=idx)
+            await asyncio.sleep(DEFAULT_DELAY)
+            return result
+    
+    async with httpx.AsyncClient(
+        timeout=REQUEST_TIMEOUT,
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
+    ) as client:
+        tasks = [worker(url, i) for i, url in enumerate(urls_to_process)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Step 3: Process results
+    valid_pages = []
+    failed_pages = []
+    
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"Task exception: {result}")
+            failed_pages.append({"error": str(result)})
+        elif result and not result.get("error"):
+            valid_pages.append(result)
+        else:
+            failed_pages.append(result)
+    
+    logger.info(f"✅ Successfully processed: {len(valid_pages)}/{len(urls_to_process)} pages")
+    
+    # Step 4: Select best profile
+    verified_pages = [p for p in valid_pages if p.get("author_verified")]
+    
+    primary_profile = None
+    if verified_pages:
+        primary_profile = max(
+            verified_pages,
+            key=lambda p: (
+                p.get("domain_trust_score", 0),
+                bool(p.get("bio")),
+                bool(p.get("profile_image")),
+                len(p.get("social_links", []))
+            )
+        )
+    elif valid_pages:
+        primary_profile = max(valid_pages, key=lambda p: p.get("domain_trust_score", 0))
+    
+    # Step 5: Aggregate articles
+    articles = []
+    for page in verified_pages:
+        articles.append({
+            "title": page.get("title"),
+            "url": page.get("url"),
+            "domain": page.get("domain"),
+            "snippet": page.get("snippet"),
+            "publish_date": page.get("publish_date"),
+            "content_quality": page.get("content_quality"),
+            "trust_score": page.get("domain_trust_score"),
+        })
+    
+    # Step 6: Enhanced Analysis
+    all_content = [p.get("content", "") for p in valid_pages if p.get("content")]
+    analysis = _analyze_tone_and_bias(all_content, normalized_name)
+    
+    # Step 7: Gather awards and recognitions from all pages
+    awards_found = []
+    for page in valid_pages:
+        text = page.get("content", "")
+        page_awards = _extract_awards(None, text, normalized_name) if text else []
+        awards_found.extend(page_awards)
+    # Deduplicate award contexts/names
+    seen_award_keys = set()
+    final_awards = []
+    for award in awards_found:
+        key = (award['name'].lower(), award['year'])
+        if key not in seen_award_keys and len(final_awards) < 10:
+            seen_award_keys.add(key)
+            final_awards.append(award)
+    
+    # Step 8: Compile final profile
+    profile_data = {
+        "name": normalized_name,
+        "query_timestamp": start_time.isoformat(),
+        "processing_time_seconds": (datetime.utcnow() - start_time).total_seconds(),
+        
+        "urls_discovered": len(urls_to_process),
+        "pages_processed": len(valid_pages),
+        "pages_failed": len(failed_pages),
+        "verification_rate": round(len(verified_pages) / max(len(valid_pages), 1) * 100, 2),
+        
+        "primary_profile": {
+            "url": primary_profile.get("url") if primary_profile else None,
+            "domain": primary_profile.get("domain") if primary_profile else None,
+            "bio": primary_profile.get("bio") if primary_profile else None,
+            "profile_image": primary_profile.get("profile_image") if primary_profile else None,
+            "social_links": primary_profile.get("social_links", []) if primary_profile else [],
+            "emails": primary_profile.get("emails", []) if primary_profile else [],
+            "phones": primary_profile.get("phones", []) if primary_profile else [],
+            "trust_score": primary_profile.get("domain_trust_score") if primary_profile else 0,
+        } if primary_profile else None,
+        
+        "articles": articles,
+        "total_articles_found": len(articles),
+        "awards": final_awards,
+        
+        "analysis": {
+            "tone_score": analysis.get("tone_score", 0),
+            "emotion_breakdown": analysis.get("emotion_breakdown", {}),
+            "bias_label": analysis.get("bias_label", "unknown"),
+            "bias_scores": analysis.get("bias_scores", {}),
+            "political_affiliation": analysis.get("political_affiliation", {}),
+            "controversy_score": analysis.get("controversy_score", 0),
+            "controversy_snippets": analysis.get("controversy_snippets", []),
+            "credibility_score": analysis.get("credibility_score", 5),
+            "credibility_indicators": analysis.get("credibility_indicators", []),
+        },
+        
+        "raw_pages": valid_pages,
+        "errors": failed_pages,
+    }
+    
+    # Step 9: AI analysis (optional)
+    if run_ai:
+        try:
+            from .ai_analysis import analyze_journalist
+            ai_result = analyze_journalist(normalized_name, profile_data)
+            profile_data["ai_analysis"] = ai_result
+        except Exception as e:
+            logger.warning(f"AI analysis failed: {str(e)}")
+    
+    logger.info("=" * 80)
+    logger.info(f"✅ Completed: {normalized_name}")
+    logger.info(f"📊 Articles: {len(articles)}, Verification: {profile_data['verification_rate']}%")
+    logger.info("=" * 80)
+    
+    return profile_data
+
+# ============================================================================
+# SYNC WRAPPER
+# ============================================================================
+
+def fetch_journalist_data_sync(
+    name: str,
+    extra_sites: Optional[List[str]] = None,
+    max_results: int = 60
+) -> Dict[str, Any]:
+    """Synchronous wrapper."""
+    return asyncio.run(
+        fetch_journalist_data(
+            name=name,
+            extra_sites=extra_sites,
+            max_results=max_results
+        )
+    )
+
+# ============================================================================
+# CLI
+# ============================================================================
+
 if __name__ == "__main__":
-    import asyncio, json
-    out = asyncio.run(fetch_journalist_data("Barkha Dutt", max_results=20))
-    print(json.dumps(out, indent=2, ensure_ascii=False)[:8000])
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("Usage: python serp_scraper_complete.py 'Journalist Name'")
+        sys.exit(1)
+    
+    journalist_name = sys.argv[1]
+    print(f"\n🔍 Fetching data for: {journalist_name}\n")
+    
+    result = fetch_journalist_data_sync(journalist_name, max_results=30)
+    
+    print("\n" + "=" * 80)
+    print("📊 RESULTS SUMMARY")
+    print("=" * 80)
+    
+    summary = {
+        "name": result["name"],
+        "pages_processed": result["pages_processed"],
+        "articles_found": result["total_articles_found"],
+        "verification_rate": f"{result['verification_rate']}%",
+        "profile": {
+            "has_bio": bool(result["primary_profile"]["bio"]) if result["primary_profile"] else False,
+            "has_image": bool(result["primary_profile"]["profile_image"]) if result["primary_profile"] else False,
+            "social_links": len(result["primary_profile"]["social_links"]) if result["primary_profile"] else 0,
+            "trust_score": f"{result['primary_profile']['trust_score']}/10" if result["primary_profile"] else "0/10",
+        },
+        "analysis": {
+            "tone_score": result["analysis"]["tone_score"],
+            "bias": result["analysis"]["bias_label"],
+            "controversy_score": result["analysis"]["controversy_score"],
+            "credibility_score": result["analysis"]["credibility_score"],
+        }
+    }
+    
+    print(json.dumps(summary, indent=2))
+    
+    # Save full results
+    output_file = f"journalist_data_{normalized_name.replace(' ', '_')}.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+    
+    print(f"\n✅ Full results saved to: {output_file}")
