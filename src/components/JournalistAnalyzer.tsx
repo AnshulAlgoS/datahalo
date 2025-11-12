@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -13,6 +14,7 @@ import {
   Users,
   FileText,
   Target,
+  ExternalLink,
 } from "lucide-react";
 
 interface AnalysisResponse {
@@ -103,6 +105,7 @@ interface AnalysisResponse {
 }
 
 export default function JournalistAnalyzer() {
+  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -140,6 +143,15 @@ export default function JournalistAnalyzer() {
       addLog(`❌ Error: ${message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const viewDetailedProfile = () => {
+    if (analysis && aiProfile) {
+      // Store analysis data in sessionStorage
+      sessionStorage.setItem(`journalist_${aiProfile.name}`, JSON.stringify(analysis));
+      // Navigate to profile page
+      navigate(`/profile/${encodeURIComponent(aiProfile.name)}`);
     }
   };
 
@@ -324,329 +336,15 @@ export default function JournalistAnalyzer() {
             </div>
           </div>
 
-          {/* Expandable Detailed Analysis */}
+          {/* View Detailed Profile Button */}
           <div className="border-t border-border pt-4">
             <button
-              onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-2 text-primary font-medium hover:underline mb-3"
+              onClick={viewDetailedProfile}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-md font-medium bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 transition-all duration-200"
             >
-              {expanded ? (
-                <>
-                  <ChevronUp size={16} /> Hide Detailed Analysis
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={16} /> View Detailed Analysis
-                </>
-              )}
+              <ExternalLink size={16} />
+              View Detailed Profile
             </button>
-
-            <AnimatePresence>
-              {expanded && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="space-y-6"
-                >
-                  {/* Career Highlights */}
-                  {aiProfile.careerHighlights &&
-                    aiProfile.careerHighlights.length > 0 && (
-                      <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                        <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                          <Award size={18} /> Career Highlights
-                        </h4>
-                        <ul className="space-y-2">
-                          {aiProfile.careerHighlights.map((highlight, i) => (
-                            <li
-                              key={i}
-                              className="text-sm text-foreground flex items-start gap-2"
-                            >
-                              <span className="text-primary mt-1">•</span>
-                              {highlight}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                  {/* Main Topics */}
-                  {aiProfile.mainTopics && aiProfile.mainTopics.length > 0 && (
-                    <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                      <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                        <FileText size={18} /> Main Topics Covered
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {aiProfile.mainTopics.map((topic, i) => (
-                          <span
-                            key={i}
-                            className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm border border-primary/30"
-                          >
-                            {topic}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Credibility Assessment */}
-                  <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                    <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                      <Target size={18} /> Credibility Assessment
-                    </h4>
-                    <p className="text-sm text-foreground mb-3">
-                      {aiProfile.credibilityScore?.reasoning}
-                    </p>
-                    {aiProfile.recommendationScore?.strengths &&
-                      aiProfile.recommendationScore.strengths.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-semibold text-green-600 mb-1">
-                            Strengths:
-                          </p>
-                          <ul className="space-y-1">
-                            {aiProfile.recommendationScore.strengths.map(
-                              (strength, i) => (
-                                <li
-                                  key={i}
-                                  className="text-xs text-foreground flex items-start gap-2"
-                                >
-                                  <span className="text-green-500">✓</span>
-                                  {strength}
-                                </li>
-                              )
-                            )}
-                          </ul>
-                        </div>
-                      )}
-                    {aiProfile.recommendationScore?.concerns &&
-                      aiProfile.recommendationScore.concerns.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-semibold text-orange-600 mb-1">
-                            Concerns:
-                          </p>
-                          <ul className="space-y-1">
-                            {aiProfile.recommendationScore.concerns.map(
-                              (concern, i) => (
-                                <li
-                                  key={i}
-                                  className="text-xs text-foreground flex items-start gap-2"
-                                >
-                                  <span className="text-orange-500">⚠</span>
-                                  {concern}
-                                </li>
-                              )
-                            )}
-                          </ul>
-                        </div>
-                      )}
-                  </div>
-
-                  {/* Political Affiliation */}
-                  {aiProfile.politicalAffiliation && (
-                    <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                      <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                        <Users size={18} /> Political Affiliation
-                      </h4>
-                      <p className="text-sm text-foreground leading-relaxed">
-                        <strong>Primary Affiliation:</strong>{" "}
-                        {aiProfile.politicalAffiliation.primary}
-                      </p>
-                      <p className="text-sm text-foreground leading-relaxed">
-                        <strong>Confidence:</strong>{" "}
-                        {aiProfile.politicalAffiliation.confidence}
-                      </p>
-                      <p className="text-sm text-foreground leading-relaxed">
-                        <strong>Evidence:</strong> {aiProfile.politicalAffiliation.evidence}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Notable Works */}
-                  {aiProfile.notableWorks &&
-                    aiProfile.notableWorks.length > 0 && (
-                      <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                        <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                          <Newspaper size={18} /> Notable Works
-                        </h4>
-                        <ul className="space-y-3">
-                          {aiProfile.notableWorks.map((work, i) => (
-                            <li
-                              key={i}
-                              className="p-3 rounded-md border border-border bg-background/50 hover:bg-background/80 transition"
-                            >
-                              <a
-                                href={work.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium hover:underline text-primary"
-                              >
-                                {work.title}
-                              </a>
-                              {work.year && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  ({work.year})
-                                </span>
-                              )}
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {work.impact}
-                              </p>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                  {/* Awards */}
-                  {aiProfile.awards && aiProfile.awards.length > 0 && (
-                    <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                      <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                        <Award size={18} /> Awards & Recognition
-                      </h4>
-                      <ul className="space-y-1">
-                        {aiProfile.awards.map((award, i) => (
-                          <li
-                            key={i}
-                            className="text-sm text-foreground flex items-start gap-2"
-                          >
-                            <span className="text-yellow-500">🏆</span>
-                            {award}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Controversies */}
-                  {aiProfile.controversies &&
-                    aiProfile.controversies.length > 0 && (
-                      <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                        <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                          <AlertTriangle size={18} /> Controversies
-                        </h4>
-                        <ul className="space-y-3">
-                          {aiProfile.controversies.map((controversy, i) => (
-                            <li
-                              key={i}
-                              className="p-3 rounded-md border border-orange-500/30 bg-orange-500/5"
-                            >
-                              <div className="flex items-start gap-2">
-                                <span
-                                  className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                                    controversy.severity === "High"
-                                      ? "bg-red-500/20 text-red-500"
-                                      : controversy.severity === "Medium"
-                                      ? "bg-orange-500/20 text-orange-500"
-                                      : "bg-yellow-500/20 text-yellow-500"
-                                  }`}
-                                >
-                                  {controversy.severity}
-                                </span>
-                                <div className="flex-1">
-                                  <p className="text-sm text-foreground">
-                                    {controversy.description}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Source: {controversy.source}
-                                  </p>
-                                </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                  {/* Ethical Assessment */}
-                  {aiProfile.ethicalAssessment && (
-                    <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                      <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                        <Users size={18} /> Ethical Assessment
-                      </h4>
-                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
-                        {aiProfile.ethicalAssessment}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Tone Analysis */}
-                  {aiProfile.toneAnalysis && (
-                    <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                      <h4 className="font-semibold text-primary mb-3">
-                        Tone Analysis
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">
-                            <strong>Emotional Tone:</strong>{" "}
-                            {aiProfile.toneAnalysis.emotionalTone}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">
-                            <strong>Bias:</strong>{" "}
-                            {aiProfile.toneAnalysis.bias}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">
-                            <strong>Objectivity:</strong>{" "}
-                            {aiProfile.toneAnalysis.objectivity}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">
-                            <strong>Consistency:</strong>{" "}
-                            {aiProfile.toneAnalysis.consistency}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Key Articles */}
-                  {articles.length > 0 && (
-                    <div className="p-4 bg-muted/30 rounded-lg border border-border">
-                      <h4 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                        <Newspaper size={18} /> Key Articles
-                      </h4>
-                      <ul className="space-y-3">
-                        {articles.map((article, i) => (
-                          <li
-                            key={i}
-                            className="p-3 rounded-md border border-border bg-background/50 hover:bg-background/80 transition"
-                          >
-                            <a
-                              href={article.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium hover:underline text-primary"
-                            >
-                              {article.title}
-                            </a>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {article.date && `Published: ${article.date} • `}
-                              {article.significance}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Final Recommendation */}
-                  {aiProfile.recommendationScore?.reasoning && (
-                    <div className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border border-primary/30">
-                      <h4 className="font-semibold text-primary mb-2">
-                        Final Recommendation
-                      </h4>
-                      <p className="text-sm text-foreground">
-                        {aiProfile.recommendationScore.reasoning}
-                      </p>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </motion.div>
       )}
