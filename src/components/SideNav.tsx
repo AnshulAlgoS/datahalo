@@ -1,6 +1,7 @@
 import { Home, Zap, Grid3x3, BarChart3, Globe, DollarSign, Mail } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const navItems = [
   { id: "hero", icon: Home, label: "Home" },
@@ -8,14 +9,20 @@ const navItems = [
   { id: "features", icon: Grid3x3, label: "Features" },
   { id: "dashboard", icon: BarChart3, label: "Dashboard" },
   { id: "impact", icon: Globe, label: "Impact" },
-  { id: "revenue", icon: DollarSign, label: "Revenue" },
+  { id: "news", icon: DollarSign, label: "News" }, 
   { id: "contact", icon: Mail, label: "Contact" },
 ];
 
 const SideNav = () => {
   const [active, setActive] = useState<string>("hero");
+  const navigate = useNavigate();
 
   const scrollToSection = (id: string) => {
+    if (id === "news") {
+      navigate("/news");
+      return;
+    }
+
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
@@ -23,7 +30,7 @@ const SideNav = () => {
     }
   };
 
-  // Update active section on scroll
+  // Track scroll position for active state
   useEffect(() => {
     const handleScroll = () => {
       let currentSection = active;
@@ -31,7 +38,10 @@ const SideNav = () => {
         const section = document.getElementById(item.id);
         if (section) {
           const rect = section.getBoundingClientRect();
-          if (rect.top <= window.innerHeight / 2 && rect.bottom >= window.innerHeight / 2) {
+          if (
+            rect.top <= window.innerHeight / 2 &&
+            rect.bottom >= window.innerHeight / 2
+          ) {
             currentSection = item.id;
             break;
           }
@@ -53,7 +63,7 @@ const SideNav = () => {
         transition={{ duration: 0.6 }}
         className="fixed inset-y-0 left-6 z-40 hidden lg:flex flex-col justify-center gap-6"
       >
-        {navItems.map((item, index) => (
+        {navItems.map((item) => (
           <motion.button
             key={item.id}
             onClick={() => scrollToSection(item.id)}
@@ -70,7 +80,6 @@ const SideNav = () => {
                   : "text-muted-foreground group-hover:text-primary"
               }`}
             />
-            {/* Tooltip */}
             <div className="absolute left-16 px-3 py-2 bg-card border border-primary/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
               <p className="text-sm font-medium text-foreground">{item.label}</p>
             </div>
@@ -90,7 +99,9 @@ const SideNav = () => {
             key={item.id}
             onClick={() => scrollToSection(item.id)}
             className={`flex flex-col items-center justify-center p-2 transition-all ${
-              active === item.id ? "text-primary" : "text-muted-foreground hover:text-primary"
+              active === item.id
+                ? "text-primary"
+                : "text-muted-foreground hover:text-primary"
             }`}
           >
             <item.icon
@@ -108,3 +119,4 @@ const SideNav = () => {
 };
 
 export default SideNav;
+
