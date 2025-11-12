@@ -38,8 +38,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- Existing Routes ---------------- #
-
 class JournalistRequest(BaseModel):
     name: str
 
