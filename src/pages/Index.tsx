@@ -5,9 +5,9 @@ import HeroSection from "@/components/HeroSection";
 import HowItWorks from "@/components/HowItWorks";
 import Features from "@/components/Features";
 import Impact from "@/components/Impact";
-import Revenue from "@/components/Revenue";
 import Contact from "@/components/Contact";
 import JournalistAnalyzer from "@/components/JournalistAnalyzer";
+import News from "@/components/News";
 
 const Index = () => {
   const [showIntro, setShowIntro] = useState(true);
@@ -33,8 +33,8 @@ const Index = () => {
         <HowItWorks />
         <Features />
         <JournalistAnalyzer />
+        <News />
         <Impact />
-        <Revenue />
         <Contact />
       </main>
     </div>

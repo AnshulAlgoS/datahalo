@@ -113,8 +113,8 @@ const News = () => {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
       
-      await res.json(); // Consume response
-      await fetchNews(); // Re-fetch articles
+      await res.json();
+      await fetchNews();
     } catch (error: any) {
       console.error("Error refreshing news:", error);
       setError(error.message || "Failed to refresh news");
@@ -162,29 +162,28 @@ const News = () => {
   const PerspectiveIcon = selectedPerspective?.icon || Users;
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-card/30 to-background" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-[100px] animate-pulse" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-[100px] animate-pulse delay-1000" />
+    <section id="news" className="relative min-h-screen flex items-center py-24 px-6 overflow-hidden">
+      {/* Background effects matching HowItWorks */}
+      <div className="absolute inset-0 bg-gradient-to-b from-background via-muted/20 to-background" />
       
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        {/* Header */}
+      <div className="relative z-10 max-w-7xl mx-auto w-full">
+        {/* Header Section */}
         <motion.div
-          initial={{ opacity: 0, y: -30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-12"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
         >
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="p-3 bg-primary/10 rounded-2xl border border-primary/20">
+          <div className="inline-flex items-center gap-3 mb-6">
+            <div className="relative inline-flex p-4 rounded-xl bg-primary/10 border border-primary/30">
               <Newspaper className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-primary/80 to-secondary bg-clip-text text-transparent">
-              News Intelligence
-            </h1>
           </div>
-          <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+          <h2 className="font-orbitron text-4xl md:text-6xl font-bold mb-6">
+            News <span className="text-primary">Intelligence</span>
+          </h2>
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             AI-powered news analysis and insights tailored to your perspective
           </p>
         </motion.div>
@@ -194,7 +193,7 @@ const News = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-destructive/10 border border-destructive/20 rounded-2xl p-4 mb-8 max-w-2xl mx-auto"
+            className="relative p-6 rounded-2xl bg-destructive/10 backdrop-blur-md border border-destructive/30 mb-8 max-w-2xl mx-auto"
           >
             <div className="flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
@@ -205,70 +204,82 @@ const News = () => {
 
         {/* Controls Section */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-card/50 backdrop-blur-md border border-border/50 rounded-3xl p-8 mb-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          viewport={{ once: true }}
+          className="relative mb-16"
         >
-          <div className="flex flex-wrap gap-8 justify-center items-center">
-            {/* Category Selector */}
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Tag className="w-4 h-4" />
-                Category
+          <div className="relative p-8 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 transition-all duration-500">
+            {/* Glow effect */}
+            <div
+              className="absolute inset-0 rounded-2xl opacity-0 hover:opacity-100 transition-opacity duration-500"
+              style={{
+                boxShadow: "0 0 40px hsl(var(--primary) / 0.3)",
+              }}
+            />
+            
+            <div className="relative flex flex-wrap gap-8 justify-center items-center">
+              {/* Category Selector */}
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Tag className="w-4 h-4" />
+                  <span>Category</span>
+                </div>
+                <div className="relative">
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="appearance-none bg-background/50 backdrop-blur-sm border border-border/50 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-foreground font-medium min-w-[180px] transition-all duration-200"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </option>
+                    ))}
+                  </select>
+                  <CategoryIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-primary pointer-events-none" />
+                </div>
               </div>
-              <div className="relative">
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="appearance-none bg-background border border-border/50 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-foreground font-medium min-w-[160px] transition-all duration-200"
-                >
-                  {categories.map(cat => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
-                <CategoryIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              </div>
-            </div>
 
-            {/* Refresh Button */}
-            <Button
-              onClick={refreshNews}
-              disabled={loading}
-              size="lg"
-              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-[0_0_20px_rgb(var(--primary)/0.3)] transition-all duration-300 hover:shadow-[0_0_30px_rgb(var(--primary)/0.4)] hover:scale-105 disabled:hover:scale-100"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh News
-                </>
-              )}
-            </Button>
+              {/* Refresh Button */}
+              <Button
+                onClick={refreshNews}
+                disabled={loading}
+                size="lg"
+                className="relative group bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground border border-primary/30 rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_hsl(var(--primary)/0.5)]"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh News
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </motion.div>
 
         {/* News Grid */}
         <motion.div
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          whileInView={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
+          viewport={{ once: true }}
           className="mb-16"
         >
           <div className="flex items-center justify-center gap-3 mb-8">
             <CategoryIcon className="w-6 h-6 text-primary" />
-            <h2 className="text-3xl font-bold text-center">
+            <h3 className="text-2xl md:text-3xl font-bold">
               Latest {selectedCategory?.label} News
-            </h2>
-            <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">
-              {articles.length} articles
+            </h3>
+            <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium border border-primary/30">
+              {articles.length}
             </div>
           </div>
 
@@ -277,14 +288,23 @@ const News = () => {
               {articles.slice(0, 24).map((article, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.03 }}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.05 }}
+                  viewport={{ once: true }}
                   className="group"
                 >
-                  <Card className="h-full bg-card/50 backdrop-blur-sm border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:scale-[1.02]">
+                  <div className="relative h-full p-6 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 transition-all duration-500">
+                    {/* Glow effect */}
+                    <div
+                      className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                      style={{
+                        boxShadow: "0 0 30px hsl(var(--primary) / 0.2)",
+                      }}
+                    />
+                    
                     {article.image && (
-                      <div className="relative overflow-hidden rounded-t-lg">
+                      <div className="relative overflow-hidden rounded-xl mb-4">
                         <img
                           src={article.image}
                           alt={article.title}
@@ -297,17 +317,17 @@ const News = () => {
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                       </div>
                     )}
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors leading-snug">
+                    
+                    <div className="relative">
+                      <h4 className="text-lg font-bold text-foreground line-clamp-2 mb-3 group-hover:text-primary transition-colors leading-snug">
                         {article.title}
-                      </CardTitle>
-                      <CardDescription className="text-muted-foreground text-sm line-clamp-3 leading-relaxed">
+                      </h4>
+                      <p className="text-muted-foreground text-sm line-clamp-3 mb-4 leading-relaxed">
                         {article.description || "No description available."}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
+                      </p>
+                      
                       <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
-                        <div className="flex items-center gap-1 bg-secondary/10 px-2 py-1 rounded-full">
+                        <div className="flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-full border border-primary/20">
                           <Tag className="w-3 h-3" />
                           <span className="font-medium">{article.source}</span>
                         </div>
@@ -316,31 +336,32 @@ const News = () => {
                           <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
                         </div>
                       </div>
+                      
                       <a
                         href={article.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-medium text-sm transition-colors group/link"
                       >
-                        Read Full Article
-                        <ExternalLink className="w-3 h-3 transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
+                        Read Article
+                        <ExternalLink className="w-3 h-3 transition-transform group-hover/link:translate-x-1" />
                       </a>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 </motion.div>
               ))}
             </div>
           ) : loading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-4">
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 className="w-12 h-12 text-primary animate-spin" />
               <span className="text-xl text-muted-foreground">Loading latest articles...</span>
             </div>
           ) : (
-            <div className="text-center py-16">
-              <div className="bg-muted/50 rounded-2xl p-8 max-w-md mx-auto">
+            <div className="text-center py-20">
+              <div className="relative p-8 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50 max-w-md mx-auto">
                 <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-xl text-muted-foreground mb-4">No articles found</p>
-                <Button onClick={fetchNews} variant="outline">
+                <Button onClick={fetchNews} variant="outline" className="border-primary/30 hover:bg-primary/10">
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Try Again
                 </Button>
@@ -349,40 +370,49 @@ const News = () => {
           )}
         </motion.div>
 
-        {/* AI Smart Feed Section */}
+        {/* AI Smart Analysis Section */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.6 }}
+          viewport={{ once: true }}
           className="mb-8"
         >
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="p-3 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-2xl border border-primary/20">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-3 mb-6">
+              <div className="relative inline-flex p-4 rounded-xl bg-primary/10 border border-primary/30">
                 <Brain className="w-8 h-8 text-primary" />
               </div>
-              <h2 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                AI Smart Analysis
-              </h2>
             </div>
-            <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              Get personalized insights and analysis powered by advanced AI technology
+            <h3 className="font-orbitron text-3xl md:text-4xl font-bold mb-4">
+              AI Smart <span className="text-primary">Analysis</span>
+            </h3>
+            <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
+              Get personalized insights powered by advanced AI technology
             </p>
           </div>
 
-          <div className="bg-card/50 backdrop-blur-md border border-border/50 rounded-3xl p-8 mb-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-            <div className="flex flex-wrap gap-8 justify-center items-center">
+          <div className="relative p-8 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 transition-all duration-500 mb-8">
+            {/* Glow effect */}
+            <div
+              className="absolute inset-0 rounded-2xl opacity-0 hover:opacity-100 transition-opacity duration-500"
+              style={{
+                boxShadow: "0 0 40px hsl(var(--primary) / 0.3)",
+              }}
+            />
+            
+            <div className="relative flex flex-wrap gap-8 justify-center items-center">
               {/* Perspective Selector */}
               <div className="flex flex-col items-center gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Target className="w-4 h-4" />
-                  Your Perspective
+                  <span>Your Perspective</span>
                 </div>
                 <div className="relative">
                   <select
                     value={perspective}
                     onChange={(e) => setPerspective(e.target.value)}
-                    className="appearance-none bg-background border border-border/50 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-foreground font-medium min-w-[200px] transition-all duration-200"
+                    className="appearance-none bg-background/50 backdrop-blur-sm border border-border/50 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-foreground font-medium min-w-[220px] transition-all duration-200"
                   >
                     {perspectives.map(persp => (
                       <option key={persp.value} value={persp.value}>
@@ -390,7 +420,7 @@ const News = () => {
                       </option>
                     ))}
                   </select>
-                  <PerspectiveIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <PerspectiveIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-primary pointer-events-none" />
                 </div>
               </div>
 
@@ -399,7 +429,7 @@ const News = () => {
                 onClick={generateSmartFeed}
                 disabled={aiLoading || articles.length === 0}
                 size="lg"
-                className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-primary-foreground rounded-xl shadow-[0_0_20px_rgb(var(--primary)/0.3)] transition-all duration-300 hover:shadow-[0_0_35px_rgb(var(--primary)/0.4)] hover:scale-105 disabled:hover:scale-100"
+                className="relative group bg-gradient-to-r from-primary/20 to-primary/10 hover:from-primary hover:to-primary/90 text-primary hover:text-primary-foreground border border-primary/30 rounded-xl transition-all duration-300 hover:shadow-[0_0_30px_hsl(var(--primary)/0.5)] disabled:opacity-50"
               >
                 {aiLoading ? (
                   <>
@@ -409,7 +439,7 @@ const News = () => {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 mr-2" />
-                    Generate Smart Analysis
+                    Generate Analysis
                   </>
                 )}
               </Button>
@@ -423,39 +453,43 @@ const News = () => {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
             >
-              <Card className="bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-md border border-primary/20 shadow-[0_0_40px_rgb(var(--primary)/0.1)]">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-2xl font-bold flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 rounded-xl">
+              <div className="relative p-8 rounded-2xl bg-card/50 backdrop-blur-md border border-primary/30">
+                {/* Glow effect */}
+                <div
+                  className="absolute inset-0 rounded-2xl"
+                  style={{
+                    boxShadow: "0 0 40px hsl(var(--primary) / 0.2)",
+                  }}
+                />
+                
+                <div className="relative">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-primary/10 rounded-xl border border-primary/30">
                       <Brain className="w-6 h-6 text-primary" />
                     </div>
-                    Smart Analysis
-                    <div className="ml-auto flex items-center gap-2 text-sm bg-primary/10 text-primary px-3 py-1 rounded-full">
+                    <h4 className="text-2xl font-bold">Smart Analysis</h4>
+                    <div className="ml-auto flex items-center gap-2 text-sm bg-primary/10 text-primary px-3 py-1 rounded-full border border-primary/30">
                       <PerspectiveIcon className="w-3 h-3" />
                       {selectedPerspective?.label}
                     </div>
-                  </CardTitle>
-                  <CardDescription>
-                    AI-powered insights tailored to your perspective
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-neutral dark:prose-invert max-w-none">
-                    <div className="text-foreground/90 whitespace-pre-line leading-relaxed text-base">
-                      {smartFeed}
-                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                  
+                  <div className="prose prose-neutral dark:prose-invert max-w-none">
+                    <pre className="text-foreground/90 whitespace-pre-wrap font-sans leading-relaxed text-base bg-background/30 p-6 rounded-xl border border-border/30">
+                      {smartFeed}
+                    </pre>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
 
           {/* CTA when no smart feed */}
           {!smartFeed && !aiLoading && articles.length > 0 && (
             <div className="text-center py-8">
-              <div className="bg-muted/30 rounded-2xl p-6 max-w-2xl mx-auto">
+              <div className="relative p-6 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50 max-w-2xl mx-auto">
                 <Zap className="w-8 h-8 text-primary mx-auto mb-4" />
-                <p className="text-lg text-muted-foreground mb-4">
+                <p className="text-lg text-muted-foreground">
                   Ready for personalized insights? Select your perspective and generate your smart analysis!
                 </p>
               </div>
@@ -463,7 +497,7 @@ const News = () => {
           )}
         </motion.div>
       </div>
-    </div>
+    </section>
   );
 };
 

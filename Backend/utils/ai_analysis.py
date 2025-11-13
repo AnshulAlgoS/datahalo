@@ -1,6 +1,6 @@
 """
 DataHalo AI Analysis Module
-Comprehensive journalist credibility analysis using NVIDIA AI
+Comprehensive journalist profile and transparency analysis using NVIDIA AI
 """
 
 from fastapi import HTTPException
@@ -201,20 +201,20 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
                     controversy_text += f"   Date: {date}\n"
         corpus_parts.append(controversy_text)
     
-    # 7. Credibility Indicators (Enhanced)
+    # 7. Observational Indicators (Enhanced)
     if credibility_indicators:
-        cred_text = "=== CREDIBILITY INDICATORS ===\n"
+        indicators_text = "=== OBSERVATIONAL INDICATORS ===\n"
         positive_indicators = [i for i in credibility_indicators if i.startswith('+')]
         negative_indicators = [i for i in credibility_indicators if i.startswith('-')]
         neutral_indicators = [i for i in credibility_indicators if not i.startswith(('+', '-'))]
         
         if positive_indicators:
-            cred_text += f" Positive: {', '.join(positive_indicators)}\n"
+            indicators_text += f" Positive: {', '.join(positive_indicators)}\n"
         if negative_indicators:
-            cred_text += f" Negative: {', '.join(negative_indicators)}\n"
+            indicators_text += f" Negative: {', '.join(negative_indicators)}\n"
         if neutral_indicators:
-            cred_text += f" Neutral: {', '.join(neutral_indicators)}\n"
-        corpus_parts.append(cred_text)
+            indicators_text += f" Neutral: {', '.join(neutral_indicators)}\n"
+        corpus_parts.append(indicators_text)
     
     # 8. Enhanced Analysis Metrics
     analysis_text = "=== AUTOMATED ANALYSIS ===\n"
@@ -449,7 +449,7 @@ def calculate_halo_score(name: str, data: dict) -> dict:
 
 def analyze_journalist(name: str, data: dict) -> Dict[str, Any]:
     """
-    Comprehensive AI-powered analysis of journalist credibility.
+    Comprehensive AI-powered analysis of journalist profile and transparency patterns.
     
     Args:
         name: Journalist name
@@ -478,9 +478,54 @@ def analyze_journalist(name: str, data: dict) -> Dict[str, Any]:
         )
     
     # Build AI prompt
-    prompt = f"""You are DataHalo — an advanced AI journalism intelligence and credibility analysis system.
+    prompt = f"""You are DataHalo — an advanced AI journalism intelligence and transparency analysis system.
 
 Your task: Generate a **comprehensive, factual, and deeply analytical profile** for journalist **{name}** with 99% accuracy in political affiliation, bias detection, and notable works identification.
+
+**CRITICAL: POLITICAL AFFILIATION DETECTION - AVOID FALSE DEFAULTS**
+DO NOT default to "Congress" or any single party unless you have CONCRETE EVIDENCE from the articles analyzed.
+BE EXTREMELY CAREFUL and ANALYTICAL. If unsure, use "Independent" or "None Detected" rather than guessing.
+
+**MANDATORY POLITICAL BIAS ANALYSIS STEPS:**
+1. **Article Content Analysis** (Primary Evidence):
+   - Count pro-BJP vs anti-BJP articles in the analyzed set
+   - Count pro-Congress vs anti-Congress articles  
+   - Look for criticism patterns: Who do they criticize more?
+   - Look for defense patterns: Who do they defend more?
+   - Analyze coverage of government policies: Supportive or critical?
+
+2. **Media Outlet Analysis** (Secondary Evidence):
+   - Right-leaning outlets: OpIndia, Swarajya, Republic TV, Times Now Navbharat
+   - Left-leaning outlets: The Wire, Scroll.in, Newslaundry, The Quint, NDTV
+   - Centrist outlets: The Hindu, Indian Express, Hindustan Times
+   - What publications does this journalist write for? This reveals their editorial alignment
+
+3. **Language Pattern Analysis** (Tertiary Evidence):
+   - Pro-BJP/Right language: "nationalist", "patriotic", "development", "strong leadership"
+   - Anti-BJP/Left language: "authoritarian", "hindutva", "secular threat", "fascist"
+   - Pro-Congress/Left language: "inclusive", "secular", "minority rights", "liberal values"
+   - Neutral language: factual reporting without charged terms
+
+4. **Topic Focus Analysis**:
+   - BJP supporters focus on: Development, nationalism, Hindu issues, foreign policy wins
+   - BJP critics focus on: Communalism, press freedom, minority rights, unemployment
+   - Congress supporters focus on: Gandhis, secularism, welfare schemes, BJP failures
+   - Independent journalists: Balanced coverage of all parties and issues
+
+**POLITICAL AFFILIATION DECISION TREE:**
+- If 70%+ articles criticize BJP/Modi government → Mark as "Anti-BJP/Left-leaning"
+- If 70%+ articles support BJP/Modi government → Mark as "Pro-BJP/Right-leaning"  
+- If 70%+ articles support Congress party → Mark as "Pro-Congress"
+- If balanced criticism and praise for all parties → Mark as "Independent/Centrist"
+- If primarily writes for right-wing outlets → Mark as "Right-leaning"
+- If primarily writes for left-wing outlets → Mark as "Left-leaning"
+- If insufficient evidence → Mark as "None Detected" with Low confidence
+
+**DO NOT:**
+- Assume Congress affiliation without clear evidence
+- Confuse anti-BJP with pro-Congress (they are different)
+- Mark as "Left-leaning" if they're just critical of government
+- Ignore the media outlets they write for
 
 You MUST analyze with EXTREME PRECISION:
 1. Career trajectory and professional background
@@ -537,12 +582,12 @@ Not about whether they're right or wrong — it's about how visible, consistent,
     
     "writingTone": "Analytical / Neutral / Persuasive / Emotional / Investigative / Opinionated / Advocacy-driven",
     
-    "ideologicalBias": "EXTREMELY SPECIFIC - Left-leaning / Right-leaning / Centrist / Libertarian / Progressive / Conservative / Socialist / Communist / Anti-establishment / Pro-establishment. Include nuances like 'Left-leaning with strong anti-Modi stance' or 'Right-wing Hindu nationalist supporter'",
+    "ideologicalBias": "EXTREMELY SPECIFIC - Choose from: 'Anti-BJP/Left-leaning' / 'Pro-BJP/Right-leaning' / 'Pro-Congress' / 'Independent/Centrist' / 'Left-wing Progressive' / 'Right-wing Nationalist' / 'Libertarian' / 'None Detected'. Include nuances like 'Anti-establishment critic of all parties' or 'Pro-government regardless of party'",
     
     "politicalAffiliation": {{
-        "primary": "BJP / Congress / AAP / Communist / Regional Party / Independent / None Detected - BE 99% ACCURATE",
-        "confidence": "High / Medium / Low - Only use High if you have concrete evidence",
-        "evidence": "SPECIFIC examples from their work showing affiliation or bias - cite actual article topics, social media posts, or public statements. Must be factual and verifiable."
+        "primary": "EVIDENCE-BASED ONLY: 'Anti-BJP' / 'Pro-BJP' / 'Pro-Congress' / 'Independent' / 'Left-wing' / 'Right-wing' / 'Centrist' / 'None Detected' - NEVER guess without evidence from analyzed articles",
+        "confidence": "High ONLY if 70%+ articles show clear pattern / Medium if 50-70% / Low if less than 50% or mixed signals",
+        "evidence": "MANDATORY: List 3-5 specific examples from the ACTUAL ANALYZED ARTICLES showing their bias. Example: 'Article titled X criticized Modi government's Y policy', 'Article on Z defended BJP's stance on...' DO NOT make up evidence. Use ONLY what you see in the SOURCE DATA."
     }},
     
     "haloScore": {{
@@ -704,16 +749,14 @@ NOW GENERATE THE COMPLETE JSON ANALYSIS WITH 99% ACCURACY:
             # Validate required fields
             required_fields = [
                 'name', 'biography', 'mainTopics', 'writingTone',
-                'credibilityScore', 'digitalPresence', 'ethicalAssessment'
+                'digitalPresence', 'ethicalAssessment'
             ]
             missing = [f for f in required_fields if f not in result]
             if missing:
                 logger.warning(f"Missing fields in AI response: {', '.join(missing)}")
                 # Add default values for missing fields
                 for field in missing:
-                    if field == 'credibilityScore':
-                        result[field] = {"score": corpus_data['halo_score_result']['score'] * 10, "reasoning": "Based on automated analysis"}
-                    elif field == 'digitalPresence':
+                    if field == 'digitalPresence':
                         result[field] = {
                             "profileImage": corpus_data.get('profile_image', ''),
                             "verifiedLinks": list(corpus_data.get('social_links', {}).values()),
@@ -732,7 +775,7 @@ NOW GENERATE THE COMPLETE JSON ANALYSIS WITH 99% ACCURACY:
                     "tone": corpus_data['tone_score'],
                     "bias": corpus_data['bias_label'],
                     "controversy": corpus_data['controversy_score'],
-                    "credibility": corpus_data['halo_score_result']['score']
+                    "halo_score": corpus_data['halo_score_result']['score']
                 }
             }
             

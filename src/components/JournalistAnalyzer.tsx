@@ -197,11 +197,10 @@ export default function JournalistAnalyzer() {
         animate={{ opacity: 1, y: 0 }}
         className="text-4xl font-orbitron font-bold text-primary mb-2 text-center"
       >
-        Journalist Credibility Analyzer
+        Journalist Profile Analyzer
       </motion.h1>
       <p className="text-center text-muted-foreground mb-6">
-        Enter a journalist's name to fetch profile, articles, and AI-based
-        credibility analysis.
+        Enter a journalist's name to fetch profile, articles, and AI-based transparency analysis.
       </p>
 
       {/* Input Section */}

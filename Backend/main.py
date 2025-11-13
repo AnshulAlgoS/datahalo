@@ -9,6 +9,7 @@ import requests
 import os
 import logging
 from utils.smart_analysis import smart_analyse
+from utils.news_fetcher import fetch_news, refresh_news as refresh_news_fetcher, get_saved_articles, clean_old_articles, get_articles_count_by_category
 
 # ---------------- ENV + LOGGING ---------------- #
 
@@ -34,7 +35,7 @@ logger.info(f"NEWS_API_KEY present: {bool(NEWS_API_KEY)}")
 
 # ---------------- FASTAPI INIT ---------------- #
 
-app = FastAPI(title="DataHalo - Journalist Credibility & News API")
+app = FastAPI(title="DataHalo - Journalist Profile & News Intelligence API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,23 +93,23 @@ class JournalistRequest(BaseModel):
 
 @app.post("/analyze")
 async def analyze(request: JournalistRequest):
-    """Analyze journalist's credibility using scraped data and comprehensive AI analysis."""
+    """Analyze journalist's profile, transparency patterns, and work using scraped data and comprehensive AI analysis."""
     if not JOURNALIST_MODULE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Journalist analysis module not available")
-    
+
     if not MONGODB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available for storing analysis")
-    
+
     try:
         name = request.name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="Name is required")
 
         logger.info(f"🔍 Starting comprehensive analysis for: {name}")
-        
+
         # Step 1: Check if analysis already exists in database (cache)
         existing_analysis = journalist_collection.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
-        
+
         if existing_analysis:
             # Check if analysis is recent (less than 7 days old)
             from datetime import timedelta
@@ -195,7 +196,7 @@ async def fetch_articles(name: str):
     """Fetch journalist articles without AI analysis."""
     if not JOURNALIST_MODULE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Journalist analysis module not available")
-    
+
     try:
         if not name.strip():
             raise HTTPException(status_code=400, detail="Name is required")
@@ -216,13 +217,13 @@ async def get_journalists(limit: int = Query(20, description="Number of journali
     """Get list of analyzed journalists from database."""
     if not MONGODB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
-    
+
     try:
         journalists = list(journalist_collection.find(
-            {}, 
+            {},
             {
-                "name": 1, 
-                "analysis_timestamp": 1, 
+                "name": 1,
+                "analysis_timestamp": 1,
                 "articlesAnalyzed": 1,
                 "aiProfile.haloScore.score": 1,
                 "aiProfile.haloScore.level": 1,
@@ -232,11 +233,11 @@ async def get_journalists(limit: int = Query(20, description="Number of journali
                 "aiProfile.ideologicalBias": 1
             }
         ).sort("analysis_timestamp", -1).limit(limit))
-        
+
         # Convert ObjectId to string
         for journalist in journalists:
             journalist["_id"] = str(journalist["_id"])
-        
+
         return {
             "status": "success",
             "count": len(journalists),
@@ -251,16 +252,16 @@ async def get_journalist(name: str):
     """Get specific journalist analysis from database."""
     if not MONGODB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
-    
+
     try:
         journalist = journalist_collection.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
-        
+
         if not journalist:
             raise HTTPException(status_code=404, detail=f"No analysis found for {name}")
-        
+
         # Convert ObjectId to string
         journalist["_id"] = str(journalist["_id"])
-        
+
         return {
             "status": "success",
             "journalist": journalist
@@ -273,193 +274,22 @@ async def get_journalist(name: str):
 
 # ---------------- NEWS MODULE ---------------- #
 
-def fetch_and_store_news(category: str = "general", language: str = "en", page_size: int = 30):
-    """
-    Fetch latest news from NewsAPI with fallback to 'everything' if no top-headlines.
-    Enhanced with better time filtering for fresh articles.
-    """
-    if not NEWS_API_KEY:
-        raise HTTPException(status_code=500, detail="NEWS_API_KEY not configured")
-    
-    if not MONGODB_AVAILABLE:
-        raise HTTPException(status_code=500, detail="Database not available")
-
-    logger.info(f"🌐 Fetching '{category}' news from NewsAPI")
-
-    # Calculate time filters for fresh content
-    from datetime import timedelta
-    
-    now = datetime.utcnow()
-    yesterday = now - timedelta(days=1)
-    three_days_ago = now - timedelta(days=3)
-
-    # 1️⃣ Try top-headlines with time filtering
-    top_url = "https://newsapi.org/v2/top-headlines"
-    top_params = {
-        "apiKey": NEWS_API_KEY,
-        "country": "in",
-        "category": category if category != "general" else None,  # Don't specify category for general
-        "language": language,
-        "pageSize": page_size,
-    }
-    
-    # Remove None values
-    top_params = {k: v for k, v in top_params.items() if v is not None}
-    
-    try:
-        response = requests.get(top_url, params=top_params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        logger.info(f"📡 NewsAPI response status: {data.get('status')}")
-    except Exception as e:
-        logger.error(f"❌ API request failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch from NewsAPI")
-
-    articles = data.get("articles", []) if data.get("status") == "ok" else []
-    logger.info(f"📰 Got {len(articles)} articles from top-headlines")
-
-    # 2️⃣ Enhanced fallback to "everything" with better search terms
-    if len(articles) < 10:  # Try fallback if we have too few articles
-        logger.info(f"🔄 Only {len(articles)} articles from top-headlines, enhancing with 'everything' search...")
-        
-        # Different search strategies based on category
-        search_queries = {
-            "general": ["India news", "breaking news India", "latest news India"],
-            "technology": ["technology India", "tech news", "startup India", "AI technology"],
-            "business": ["business India", "economy India", "market news", "finance India"],
-            "sports": ["sports India", "cricket India", "football India", "Olympics"],
-            "science": ["science news", "research India", "innovation", "space technology"],
-            "health": ["health India", "medical news", "healthcare", "wellness"],
-            "entertainment": ["entertainment India", "Bollywood", "movies", "celebrity news"]
-        }
-        
-        search_terms = search_queries.get(category, ["India news", "breaking news"])
-        
-        search_url = "https://newsapi.org/v2/everything"
-        
-        # Try multiple search terms to get diverse articles
-        fallback_articles = []
-        for search_term in search_terms[:2]:  # Use first 2 search terms
-            search_params = {
-                "apiKey": NEWS_API_KEY,
-                "q": search_term,
-                "language": language,
-                "sortBy": "publishedAt",
-                "pageSize": min(20, page_size),
-                "from": yesterday.strftime("%Y-%m-%d"),  # Only articles from last 24 hours
-                "domains": "timesofindia.indiatimes.com,indianexpress.com,hindustantimes.com,ndtv.com,news18.com" if category != "technology" else "techcrunch.com,gadgets360.com,livemint.com"
-            }
-            
-            try:
-                search_response = requests.get(search_url, params=search_params, timeout=10)
-                search_response.raise_for_status()
-                search_data = search_response.json()
-                
-                if search_data.get("status") == "ok":
-                    new_articles = search_data.get("articles", [])
-                    fallback_articles.extend(new_articles)
-                    logger.info(f"📰 Got {len(new_articles)} articles from '{search_term}' search")
-                    
-                    if len(fallback_articles) >= page_size:
-                        break
-                        
-            except Exception as e:
-                logger.warning(f"⚠️ Search for '{search_term}' failed: {e}")
-                continue
-        
-        # If still no articles, try without date restriction
-        if not fallback_articles:
-            logger.info("🔄 Trying without date restriction...")
-            search_params = {
-                "apiKey": NEWS_API_KEY,
-                "q": search_terms[0],
-                "language": language,
-                "sortBy": "publishedAt",
-                "pageSize": page_size,
-            }
-            
-            try:
-                search_response = requests.get(search_url, params=search_params, timeout=10)
-                search_response.raise_for_status()
-                search_data = search_response.json()
-                
-                if search_data.get("status") == "ok":
-                    fallback_articles = search_data.get("articles", [])
-                    logger.info(f"📰 Got {len(fallback_articles)} articles without date restriction")
-                    
-            except Exception as e:
-                logger.error(f"❌ Final fallback search failed: {e}")
-        
-        # Combine articles from both sources
-        all_articles = articles + fallback_articles
-        
-        # Remove duplicates based on URL
-        seen_urls = set()
-        unique_articles = []
-        for article in all_articles:
-            if article.get("url") not in seen_urls and article.get("url"):
-                seen_urls.add(article["url"])
-                unique_articles.append(article)
-        
-        articles = unique_articles[:page_size]  # Limit to requested size
-        logger.info(f"📰 Final article count: {len(articles)} (after deduplication)")
-    
-    if not articles:
-        logger.error("❌ No articles found from any source")
-        raise HTTPException(status_code=404, detail="No articles found")
-
-    # 3️⃣ Process and store articles
-    formatted_articles = []
-    for item in articles:
-        if not item.get("title") or not item.get("url") or item.get("title") == "[Removed]":
-            continue
-        
-        article = {
-            "title": item["title"],
-            "description": item.get("description", ""),
-            "url": item["url"],
-            "image": item.get("urlToImage"),
-            "source": item.get("source", {}).get("name", "Unknown"),
-            "publishedAt": item.get("publishedAt"),
-            "category": category,
-            "fetchedAt": datetime.utcnow(),
-        }
-        formatted_articles.append(article)
-
-    # Replace old category data
-    try:
-        # Clear old articles for this category
-        deleted_count = news_collection.delete_many({"category": category}).deleted_count
-        logger.info(f"🗑️ Removed {deleted_count} old '{category}' articles")
-        
-        if formatted_articles:
-            for article in formatted_articles:
-                news_collection.update_one(
-                    {"url": article["url"]}, 
-                    {"$set": article}, 
-                    upsert=True
-                )
-    except Exception as e:
-        logger.error(f"❌ Database operation failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save to database")
-
-    logger.info(f"✅ Successfully stored {len(formatted_articles)} fresh '{category}' articles in DB")
-    return {"count": len(formatted_articles), "articles": formatted_articles}
-
 @app.get("/news")
 async def get_news(category: str = Query("general", description="Category of news")):
-    """Get saved news articles from MongoDB database (fast load)."""
+    """Get all saved news articles from MongoDB database sorted by newest first."""
     try:
         if not MONGODB_AVAILABLE:
+            logger.warning("Database not available")
             raise HTTPException(status_code=500, detail="Database not available")
         
-        # Get articles from database only
-        query = {} if category == "all" else {"category": category}
-        articles = list(news_collection.find(query).sort("fetchedAt", -1).limit(30))
+        # Get all articles for category from database (sorted newest first)
+        articles = get_saved_articles(category=category, limit=100)
         
-        # Convert MongoDB ObjectId to string
-        for article in articles:
-            article["_id"] = str(article["_id"])
+        # If no articles found, fetch some fresh ones
+        if not articles:
+            logger.info(f"No articles in database for '{category}', fetching fresh...")
+            result = fetch_news(category=category)
+            articles = result.get("all_articles", [])
         
         logger.info(f"📚 Retrieved {len(articles)} '{category}' articles from database")
         
@@ -469,81 +299,46 @@ async def get_news(category: str = Query("general", description="Category of new
             "source": "database",
             "count": len(articles),
             "articles": articles,
-            "message": f"Loaded {len(articles)} articles from database"
+            "message": f"Loaded {len(articles)} articles from database (newest first)"
         }
     except Exception as e:
         logger.error(f"❌ Error retrieving news: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve news from database")
 
-@app.get("/fetch-fresh-news")
-async def fetch_fresh_news(category: str = Query("general", description="Category to fetch fresh news")):
-    """Fetch fresh news from NewsAPI and store in MongoDB (only when refresh is clicked)."""
-    try:
-        logger.info(f"🔄 User requested fresh '{category}' news from API...")
-        
-        # Fetch fresh news from API
-        result = fetch_and_store_news(category)
-        
-        return {
-            "status": "success",
-            "category": category,
-            "source": "fresh_api",
-            "fetched": result["count"],
-            "articles": result["articles"],
-            "message": f"Fetched {result['count']} fresh articles from NewsAPI"
-        }
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.error(f"❌ Error fetching fresh news: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch fresh news")
-
 @app.get("/refresh-news")
-async def refresh_news(category: str = Query("general", description="Category to refresh")):
-    """Complete refresh flow: Fetch fresh news → Save to DB → Return updated articles."""
+async def refresh_news_endpoint(category: str = Query("general", description="Category to refresh")):
+    """
+    Refresh news: Fetch fresh articles from API and APPEND to database.
+    Returns ALL articles for category sorted by newest first.
+    """
     try:
-        logger.info(f"🔄 Complete refresh requested for '{category}' category...")
+        logger.info(f"🔄 Refresh requested for '{category}' category...")
         
-        # Step 1: Clear old cache (optional - removes articles older than 2 hours)
-        deleted_count = 0
-        if MONGODB_AVAILABLE:
-            from datetime import timedelta
-            two_hours_ago = datetime.utcnow() - timedelta(hours=2)
-            
-            deleted_count = news_collection.delete_many({
-                "category": category,
-                "fetchedAt": {"$lt": two_hours_ago}
-            }).deleted_count
-            
-            logger.info(f"🗑️ Removed {deleted_count} cached '{category}' articles older than 2 hours")
+        # Use the enhanced refresh function that appends new articles
+        result = refresh_news_fetcher(category=category, page_size=30)
         
-        # Step 2: Fetch fresh news from API
-        fresh_result = fetch_and_store_news(category, page_size=50)
+        if result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error")
+            raise HTTPException(status_code=500, detail=error_msg)
         
-        # Step 3: Get all current articles from database (including the fresh ones)
-        query = {"category": category}
-        all_articles = list(news_collection.find(query).sort("fetchedAt", -1).limit(50))
-        
-        # Convert ObjectId to string
-        for article in all_articles:
-            article["_id"] = str(article["_id"])
-        
-        logger.info(f"✅ Refresh complete: {fresh_result['count']} fresh articles fetched")
+        logger.info(f"✅ Refresh complete: {result['count']} new articles, {result['total_in_db']} total in DB")
         
         return {
             "status": "success",
             "category": category,
             "source": "refreshed",
-            "fresh_fetched": fresh_result["count"],
-            "total_articles": len(all_articles),
-            "articles": all_articles,
-            "cleared_cache": deleted_count,
+            "new_articles_count": result["count"],
+            "duplicates_skipped": result.get("duplicates_skipped", 0),
+            "total_articles": result["total_in_db"],
+            "articles": result["all_articles"],  # All articles, newest first
             "timestamp": datetime.utcnow().isoformat(),
-            "message": f"Refreshed with {fresh_result['count']} fresh articles"
+            "message": f"Added {result['count']} new articles. Total: {result['total_in_db']}"
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Error during refresh: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to refresh news")
+        logger.error(f"❌ Error during refresh: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to refresh news: {str(e)}")
 
 @app.get("/saved-news")
 async def get_saved_news(category: str = Query("all", description="Category filter")):
@@ -552,12 +347,7 @@ async def get_saved_news(category: str = Query("all", description="Category filt
         if not MONGODB_AVAILABLE:
             raise HTTPException(status_code=500, detail="Database not available")
         
-        query = {} if category == "all" else {"category": category}
-        articles = list(news_collection.find(query).sort("fetchedAt", -1).limit(50))
-        
-        # Convert MongoDB ObjectId to string
-        for article in articles:
-            article["_id"] = str(article["_id"])
+        articles = get_saved_articles(category=category, limit=100)
         
         return {
             "status": "success",
@@ -575,19 +365,19 @@ async def get_smart_feed(pov: str = Query("general public", description="Perspec
     try:
         if not MONGODB_AVAILABLE:
             raise HTTPException(status_code=500, detail="Database not available")
-        
+
         # Get recent articles from database
         articles = list(news_collection.find().sort("fetchedAt", -1).limit(20))
-        
+
         if not articles:
             # Try to fetch some news first
             logger.info("No articles found, fetching fresh news...")
             await get_news("general")
             articles = list(news_collection.find().sort("fetchedAt", -1).limit(20))
-        
+
         if not articles:
             raise HTTPException(status_code=404, detail="No news articles found in database. Please fetch news first.")
-        
+
         # Convert MongoDB documents to dict for AI analysis
         article_data = []
         for article in articles:
@@ -599,13 +389,13 @@ async def get_smart_feed(pov: str = Query("general public", description="Perspec
                 "category": article.get("category", ""),
                 "publishedAt": article.get("publishedAt", "")
             })
-        
+
         logger.info(f"🧠 Analyzing {len(article_data)} articles for perspective: {pov}")
         summary = smart_analyse(article_data, pov)
-        
+
         return {
-            "status": "success", 
-            "perspective": pov, 
+            "status": "success",
+            "perspective": pov,
             "articlesAnalyzed": len(article_data),
             "summary": summary
         }
@@ -643,7 +433,7 @@ async def root():
             "news": "/news?category=general - Load articles from database (fast)",
             "refresh": "/refresh-news?category=general - Fetch fresh news from API + update DB",
             "fetch_fresh": "/fetch-fresh-news?category=general - Fetch fresh from API only",
-            "saved_news": "/saved-news?category=all - Get all saved articles", 
+            "saved_news": "/saved-news?category=all - Get all saved articles",
             "smart_feed": "/smart-feed?pov=general public - AI analysis",
             "health": "/health - Service health check",
             "analyze": "/analyze - Analyze journalist",

@@ -160,18 +160,18 @@ export default function JournalistProfile() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <button
             onClick={() => {
-              navigate("/");
-              // Use setTimeout to ensure navigation completes before scrolling
+              navigate('/');
+              // Wait for navigation to complete, then scroll to analyzer
               setTimeout(() => {
-                const element = document.getElementById("analyzer");
-                if (element) {
-                  element.scrollIntoView({ behavior: "smooth" });
+                const analyzerElement = document.getElementById('analyzer');
+                if (analyzerElement) {
+                  analyzerElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
               }, 100);
             }}
-            className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card/50 backdrop-blur-sm border border-border/50 hover:border-primary/50 transition-all duration-300 text-foreground hover:text-primary"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft className="w-5 h-5" />
             <span className="font-medium">Back to Analyzer</span>
           </button>
           <h1 className="text-xl font-orbitron font-bold text-primary">
