@@ -63,6 +63,7 @@ try:
     client = MongoClient(MONGO_URI)
     db = client["datahalo"]
     news_collection = db["news"]
+    journalist_collection = db["journalists"]
     logger.info("✅ Connected to MongoDB successfully")
     MONGODB_AVAILABLE = True
 except Exception as e:
@@ -70,24 +71,16 @@ except Exception as e:
     client = None
     db = None
     news_collection = None
+    journalist_collection = None
     MONGODB_AVAILABLE = False
 
 # ---------------- JOURNALIST MODULE ---------------- #
 
-# Try to import journalist analysis modules (may not exist after cleanup)
+# Try to import journalist analysis modules
 try:
     from utils.serp_scraper import fetch_journalist_data
-    # Create a simple wrapper for the AI analysis since utils.ai_analysis was deleted
-    def analyze_journalist(name: str, data: dict) -> dict:
-        """Simple journalist analysis wrapper"""
-        return {
-            "name": name,
-            "articles_found": len(data.get("articles", [])),
-            "analysis_summary": "Journalist analysis completed successfully",
-            "data_quality": "Good" if len(data.get("articles", [])) > 5 else "Limited",
-            "verification_status": "Verified" if data.get("verification_rate", 0) > 50 else "Unverified"
-        }
-    
+    from utils.ai_analysis import analyze_journalist
+
     JOURNALIST_MODULE_AVAILABLE = True
     logger.info("✅ Journalist analysis modules loaded")
 except ImportError as e:
@@ -99,37 +92,103 @@ class JournalistRequest(BaseModel):
 
 @app.post("/analyze")
 async def analyze(request: JournalistRequest):
-    """Analyze journalist's credibility using scraped data and AI."""
+    """Analyze journalist's credibility using scraped data and comprehensive AI analysis."""
     if not JOURNALIST_MODULE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Journalist analysis module not available")
+    
+    if not MONGODB_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available for storing analysis")
     
     try:
         name = request.name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="Name is required")
 
-        logger.info(f"🔍 Fetching journalist data for: {name}")
-        data = await fetch_journalist_data(name)
+        logger.info(f"🔍 Starting comprehensive analysis for: {name}")
+        
+        # Step 1: Check if analysis already exists in database (cache)
+        existing_analysis = journalist_collection.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
+        
+        if existing_analysis:
+            # Check if analysis is recent (less than 7 days old)
+            from datetime import timedelta
+            analysis_date = existing_analysis.get('analysis_timestamp')
+            if analysis_date:
+                try:
+                    if isinstance(analysis_date, str):
+                        analysis_date = datetime.fromisoformat(analysis_date.replace('Z', '+00:00'))
+                    if datetime.utcnow() - analysis_date < timedelta(days=7):
+                        logger.info(f"📚 Using cached analysis for: {name}")
+                        # Convert ObjectId to string and return cached result
+                        existing_analysis["_id"] = str(existing_analysis["_id"])
+                        return {
+                            "status": "success",
+                            "journalist": name,
+                            "articlesAnalyzed": existing_analysis.get("articlesAnalyzed", 0),
+                            "aiProfile": existing_analysis.get("aiProfile", {}),
+                            "source": "cached"
+                        }
+                except:
+                    pass  # If date parsing fails, proceed with fresh analysis
 
-        if not data or not data.get("articles"):
+        # Step 2: Fetch fresh data from scraper
+        logger.info(f"🕷️ Fetching fresh data for: {name}")
+        scraped_data = await fetch_journalist_data(name)
+
+        if not scraped_data or not scraped_data.get("articles"):
             raise HTTPException(status_code=404, detail=f"No articles found for {name}")
 
-        logger.info(f"🧠 Found {len(data['articles'])} articles — sending to AI analysis...")
-        analysis = analyze_journalist(name, data)
+        logger.info(f"📊 Found {len(scraped_data['articles'])} articles for analysis")
 
+        # Step 3: Run comprehensive AI analysis
+        logger.info(f"🧠 Running AI analysis for: {name}")
+        ai_analysis = analyze_journalist(name, scraped_data)
+
+        # Step 4: Prepare complete analysis result
+        analysis_result = {
+            "name": name,
+            "analysis_timestamp": datetime.utcnow(),
+            "articlesAnalyzed": len(scraped_data["articles"]),
+            "aiProfile": ai_analysis,
+            "scrapedData": {
+                "articles_count": len(scraped_data.get("articles", [])),
+                "verification_rate": scraped_data.get("verification_rate", 0),
+                "data_sources": scraped_data.get("data_sources", []),
+                "query_timestamp": scraped_data.get("query_timestamp", ""),
+                "primary_profile": scraped_data.get("primary_profile", {}),
+                "awards": scraped_data.get("awards", [])
+            }
+        }
+
+        # Step 5: Save to MongoDB
+        try:
+            # Update or insert the analysis
+            journalist_collection.update_one(
+                {"name": {"$regex": f"^{name}$", "$options": "i"}},
+                {"$set": analysis_result},
+                upsert=True
+            )
+            logger.info(f"💾 Saved analysis to database for: {name}")
+        except Exception as db_error:
+            logger.error(f"❌ Failed to save to database: {str(db_error)}")
+            # Continue without failing the request
+
+        # Step 6: Return response
         return {
             "status": "success",
             "journalist": name,
-            "articlesAnalyzed": len(data["articles"]),
-            "aiProfile": analysis,
+            "articlesAnalyzed": len(scraped_data["articles"]),
+            "aiProfile": ai_analysis,
+            "source": "fresh_analysis",
+            "timestamp": datetime.utcnow().isoformat()
         }
 
     except HTTPException as he:
         logger.error(f"❌ HTTP Error: {he.detail}")
         raise
     except Exception as e:
-        logger.error(f"❌ Unexpected Error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        logger.error(f"❌ Unexpected Error during analysis: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.get("/fetch")
 async def fetch_articles(name: str):
@@ -151,6 +210,63 @@ async def fetch_articles(name: str):
     except Exception as e:
         logger.error(f"❌ Fetch Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.get("/journalists")
+async def get_journalists(limit: int = Query(20, description="Number of journalists to return")):
+    """Get list of analyzed journalists from database."""
+    if not MONGODB_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        journalists = list(journalist_collection.find(
+            {}, 
+            {
+                "name": 1, 
+                "analysis_timestamp": 1, 
+                "articlesAnalyzed": 1,
+                "aiProfile.credibilityScore.score": 1,
+                "aiProfile.digitalPresence.profileImage": 1,
+                "aiProfile.mainTopics": 1
+            }
+        ).sort("analysis_timestamp", -1).limit(limit))
+        
+        # Convert ObjectId to string
+        for journalist in journalists:
+            journalist["_id"] = str(journalist["_id"])
+        
+        return {
+            "status": "success",
+            "count": len(journalists),
+            "journalists": journalists
+        }
+    except Exception as e:
+        logger.error(f"❌ Error retrieving journalists: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve journalists")
+
+@app.get("/journalist/{name}")
+async def get_journalist(name: str):
+    """Get specific journalist analysis from database."""
+    if not MONGODB_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        journalist = journalist_collection.find_one({"name": {"$regex": f"^{name}$", "$options": "i"}})
+        
+        if not journalist:
+            raise HTTPException(status_code=404, detail=f"No analysis found for {name}")
+        
+        # Convert ObjectId to string
+        journalist["_id"] = str(journalist["_id"])
+        
+        return {
+            "status": "success",
+            "journalist": journalist
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error retrieving journalist: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve journalist")
 
 # ---------------- NEWS MODULE ---------------- #
 
@@ -526,7 +642,10 @@ async def root():
             "fetch_fresh": "/fetch-fresh-news?category=general - Fetch fresh from API only",
             "saved_news": "/saved-news?category=all - Get all saved articles", 
             "smart_feed": "/smart-feed?pov=general public - AI analysis",
-            "health": "/health - Service health check"
+            "health": "/health - Service health check",
+            "analyze": "/analyze - Analyze journalist",
+            "journalists": "/journalists - Get list of analyzed journalists",
+            "journalist": "/journalist/{name} - Get specific journalist analysis"
         },
         "categories": ["general", "technology", "business", "sports", "science", "health", "entertainment"],
         "ai_perspectives": ["general public", "finance analyst", "government exam aspirant", "tech student", "business student"]

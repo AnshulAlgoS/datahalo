@@ -394,7 +394,7 @@ NOW GENERATE THE COMPLETE JSON ANALYSIS:
         logger.info(f"Sending analysis request to NVIDIA API for: {name}")
         
         completion = client.chat.completions.create(
-            model="qwen/qwen2.5-coder-32b-instruct",
+            model="meta/llama-3.1-8b-instruct",
             messages=[
                 {
                     "role": "system",
