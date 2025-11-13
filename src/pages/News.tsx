@@ -45,20 +45,26 @@ const News = () => {
     setLoading(true);
     setError("");
     try {
-      // Load articles from database (fast)
-      const url = buildApiUrl(API_ENDPOINTS.NEWS, { category });
-      const res = await fetch(url);
-      const data = await res.json();
+      const apiUrl = buildApiUrl(API_ENDPOINTS.NEWS);
+      const res = await fetch(`${apiUrl}?category=${category}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'omit',
+        mode: 'cors'
+      });
       
-      if (data.status === "success") {
-        setArticles(data.articles || []);
-        console.log(`📚 Loaded ${data.articles?.length || 0} articles from database`);
-      } else {
-        setError("Failed to load articles from database");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch (error) {
-      console.error("Error loading articles:", error);
-      setError("Network error while loading articles");
+      
+      const data = await res.json();
+      setArticles(data.articles || []);
+    } catch (error: any) {
+      console.error("Error fetching news:", error);
+      setError(error.message || "Failed to fetch news");
     } finally {
       setLoading(false);
     }
@@ -68,26 +74,26 @@ const News = () => {
     setLoading(true);
     setError("");
     try {
-      // Step 1: Fetch fresh news from API and save to database
-      console.log(`🔄 Refreshing ${category} news...`);
-      const url = buildApiUrl(API_ENDPOINTS.REFRESH_NEWS, { category });
-      const refreshRes = await fetch(url);
-      const refreshData = await refreshRes.json();
+      const apiUrl = buildApiUrl(API_ENDPOINTS.REFRESH_NEWS);
+      const res = await fetch(`${apiUrl}?category=${category}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'omit',
+        mode: 'cors'
+      });
       
-      if (refreshData.status === "success") {
-        // Step 2: Update frontend with the refreshed articles
-        setArticles(refreshData.articles || []);
-        console.log(`✅ Refreshed with ${refreshData.fresh_fetched} fresh articles`);
-        
-        // Optional: Show success message
-        const successMessage = `Refreshed with ${refreshData.fresh_fetched} fresh articles!`;
-        console.log(successMessage);
-      } else {
-        setError("Failed to refresh news");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch (error) {
+      
+      await res.json(); // Consume response
+      await fetchNews(); // Re-fetch articles
+    } catch (error: any) {
       console.error("Error refreshing news:", error);
-      setError("Network error while refreshing news");
+      setError(error.message || "Failed to refresh news");
     } finally {
       setLoading(false);
     }
@@ -96,21 +102,27 @@ const News = () => {
   const generateSmartFeed = async () => {
     setAiLoading(true);
     setError("");
-    setSmartFeed("");
-    
     try {
-      const url = buildApiUrl(API_ENDPOINTS.SMART_FEED, { pov: perspective });
-      const res = await fetch(url, { method: "POST" });
-      const data = await res.json();
+      const apiUrl = buildApiUrl(API_ENDPOINTS.SMART_FEED);
+      const res = await fetch(`${apiUrl}?pov=${encodeURIComponent(perspective)}`, {
+        method: "POST",
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'omit',
+        mode: 'cors'
+      });
       
-      if (data.status === "success") {
-        setSmartFeed(data.summary || "No smart feed available.");
-      } else {
-        setError(data.detail || "Failed to generate smart feed");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch (error) {
+      
+      const data = await res.json();
+      setSmartFeed(data.summary || "No smart feed available.");
+    } catch (error: any) {
       console.error("Error fetching smart feed:", error);
-      setError("Network error while generating smart feed");
+      setError(error.message || "Failed to generate smart feed");
     } finally {
       setAiLoading(false);
     }

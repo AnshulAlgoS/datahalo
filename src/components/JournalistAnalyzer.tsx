@@ -127,27 +127,40 @@ export default function JournalistAnalyzer() {
     setLogs([]);
     setExpanded(false);
     setLoading(true);
-    addLog(`🚀 Sending "${name}" to backend...`);
+    addLog(`🚀 Analyzing "${name}"...`);
 
     try {
-      const response = await fetch(buildApiUrl(API_ENDPOINTS.ANALYZE), {
+      const apiUrl = buildApiUrl(API_ENDPOINTS.ANALYZE);
+      addLog(`🔗 API URL: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify({ name: name.trim() }),
+        credentials: 'omit', // Don't send cookies for CORS
+        mode: 'cors' // Explicit CORS mode
       });
+      
+      addLog(`📡 Response status: ${response.status}`);
+      
       if (!response.ok) {
-        const message = await response.text();
-        setError(`Analysis failed: ${message}`);
-        addLog(`❌ Error: ${message}`);
-      } else {
-        const data = await response.json();
-        addLog("✅ Analysis received.");
-        setAnalysis(data);
+        const errorText = await response.text();
+        addLog(`❌ Error response: ${errorText}`);
+        setError(`Analysis failed (${response.status}): ${errorText}`);
+        return;
       }
+      
+      const data = await response.json();
+      addLog("✅ Analysis received successfully!");
+      setAnalysis(data);
+      
     } catch (error: any) {
-      const message = error.message;
-      setError(`Analysis failed: ${message}`);
-      addLog(`❌ Error: ${message}`);
+      console.error("Full error:", error);
+      addLog(`❌ Network error: ${error.message}`);
+      setError(`Network error: ${error.message}`);
     } finally {
       setLoading(false);
     }

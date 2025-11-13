@@ -1,51 +1,42 @@
 // API Configuration for DataHalo
-// Handles both development (localhost) and production URLs
+// Handles both development (localhost) and production environments
 
-export const getApiBaseUrl = () => {
-  // Check if we're in development environment
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    
-    // Development environments
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://127.0.0.1:8000';
-    }
-    
-    // Vercel preview deployments or other development URLs
-    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-      return 'http://127.0.0.1:8000';
-    }
-  }
-  
-  // Check if we have environment variables (for build-time configuration)
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+// Environment detection
+const isLocalhost = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || 
+   window.location.hostname === '127.0.0.1' || 
+   window.location.hostname === '::1');
+
+// API Base URLs
+const API_BASE_URLS = {
+  development: 'http://127.0.0.1:8000',
+  production: 'https://datahalo.onrender.com'
+};
+
+// Get the current API base URL
+export const getApiBaseUrl = (): string => {
+  // Check for environment variable override
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   
-  // Production URL (fallback)
-  return 'https://datahalo.onrender.com';
+  // Auto-detect environment
+  return isLocalhost ? API_BASE_URLS.development : API_BASE_URLS.production;
 };
 
-export const API_BASE_URL = getApiBaseUrl();
-
-// API endpoints
+// API Endpoints
 export const API_ENDPOINTS = {
-  // News endpoints
   NEWS: '/news',
   REFRESH_NEWS: '/refresh-news',
-  SAVED_NEWS: '/saved-news',
   SMART_FEED: '/smart-feed',
-  
-  // Journalist endpoints
   ANALYZE: '/analyze',
   FETCH: '/fetch',
-  
-  // Health
   HEALTH: '/health',
-  ROOT: '/',
+  SAVED_NEWS: '/saved-news',
+  ROOT: '/'
 } as const;
 
-// Helper function to build full API URLs
+// Build complete API URL
 export const buildApiUrl = (endpoint: string, params?: URLSearchParams | Record<string, string>) => {
   const baseUrl = getApiBaseUrl();
   let url = `${baseUrl}${endpoint}`;
@@ -55,6 +46,7 @@ export const buildApiUrl = (endpoint: string, params?: URLSearchParams | Record<
     url += `?${searchParams.toString()}`;
   }
   
+  console.log('🔗 Built API URL:', url);
   return url;
 };
 
@@ -67,10 +59,24 @@ export const API_CONFIG = {
   },
 } as const;
 
+// Debug function
+export const debugApiConfig = () => {
+  return {
+    baseUrl: getApiBaseUrl(),
+    hostname: typeof window !== 'undefined' ? window.location.hostname : 'server-side',
+    isDevelopment: typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1'
+    ),
+    envVar: typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : 'not available',
+  };
+};
+
 export default {
   getApiBaseUrl,
-  API_BASE_URL,
+  API_BASE_URL: getApiBaseUrl(),
   API_ENDPOINTS,
   buildApiUrl,
   API_CONFIG,
+  debugApiConfig,
 };
