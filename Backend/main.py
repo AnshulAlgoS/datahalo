@@ -432,60 +432,117 @@ async def analyze_narrative(request: NarrativeRequest):
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
         
-        # Search for articles related to the topic (more flexible search)
-        # Split topic into keywords for better matching
-        keywords = topic.lower().split()
-        regex_patterns = [{"title": {"$regex": word, "$options": "i"}} for word in keywords]
-        regex_patterns.extend([{"description": {"$regex": word, "$options": "i"}} for word in keywords])
-        
-        query = {
-            "$or": regex_patterns,
+        # IMPROVED: More flexible search strategy
+        # Strategy 1: Try exact phrase match first
+        articles = list(news_collection.find({
+            "$or": [
+                {"title": {"$regex": topic, "$options": "i"}},
+                {"description": {"$regex": topic, "$options": "i"}}
+            ],
             "fetchedAt": {"$gte": start_date, "$lte": end_date}
-        }
+        }).sort("fetchedAt", -1).limit(100))
         
-        articles = list(news_collection.find(query).sort("fetchedAt", -1).limit(200))
+        logger.info(f"📊 Strategy 1 (exact phrase): Found {len(articles)} articles")
         
-        logger.info(f"📊 Found {len(articles)} articles in database for '{topic}'")
+        # Strategy 2: If not enough, try keyword matching (each word separately)
+        if len(articles) < 10:
+            keywords = [word.lower() for word in topic.split() if len(word) > 3]
+            if keywords:
+                # Create OR conditions for each keyword
+                keyword_conditions = []
+                for keyword in keywords:
+                    keyword_conditions.extend([
+                        {"title": {"$regex": keyword, "$options": "i"}},
+                        {"description": {"$regex": keyword, "$options": "i"}}
+                    ])
+                
+                articles_strategy2 = list(news_collection.find({
+                    "$or": keyword_conditions,
+                    "fetchedAt": {"$gte": start_date, "$lte": end_date}
+                }).sort("fetchedAt", -1).limit(100))
+                
+                # Merge and deduplicate
+                seen_urls = {a["url"] for a in articles}
+                for article in articles_strategy2:
+                    if article["url"] not in seen_urls:
+                        articles.append(article)
+                        seen_urls.add(article["url"])
+                
+                logger.info(f"📊 Strategy 2 (keywords): Added {len(articles_strategy2)} articles, total now {len(articles)}")
         
-        if len(articles) < 5:  # Need at least 5 articles for meaningful analysis
-            # Try to fetch some relevant news from NewsAPI with multiple search strategies
-            logger.info(f"Insufficient articles ({len(articles)}), fetching from NewsAPI...")
+        # Strategy 3: If still not enough, get recent articles from related categories
+        if len(articles) < 5:
+            # Determine likely category from topic
+            category_map = {
+                "election": "general",
+                "vote": "general",
+                "politic": "general",
+                "government": "general",
+                "economy": "business",
+                "market": "business",
+                "stock": "business",
+                "tech": "technology",
+                "ai": "technology",
+                "health": "health",
+                "medical": "health",
+                "sport": "sports",
+                "climate": "science",
+                "environment": "science"
+            }
             
-            search_queries = [topic]
-            # Add variations for better results
-            if len(keywords) > 1:
-                search_queries.append(" OR ".join(keywords))
-                search_queries.append(keywords[0])  # Try primary keyword alone
-            
-            fetched_count = 0
-            for search_query in search_queries:
-                if fetched_count >= 20:  # Stop if we have enough
+            likely_category = "general"
+            topic_lower = topic.lower()
+            for key, cat in category_map.items():
+                if key in topic_lower:
+                    likely_category = cat
                     break
+            
+            logger.info(f"📊 Strategy 3: Trying category '{likely_category}' articles...")
+            
+            category_articles = list(news_collection.find({
+                "category": likely_category,
+                "fetchedAt": {"$gte": start_date, "$lte": end_date}
+            }).sort("fetchedAt", -1).limit(50))
+            
+            # Add articles that might be relevant
+            seen_urls = {a["url"] for a in articles}
+            for article in category_articles:
+                if article["url"] not in seen_urls:
+                    # Check if article is somewhat relevant
+                    text = f"{article.get('title', '')} {article.get('description', '')}".lower()
+                    if any(word.lower() in text for word in topic.split() if len(word) > 3):
+                        articles.append(article)
+                        seen_urls.add(article["url"])
+            
+            logger.info(f"📊 Strategy 3 (category): Total articles now {len(articles)}")
+        
+        # Strategy 4: If STILL not enough, fetch from NewsAPI
+        if len(articles) < 5:
+            logger.info(f"📊 Strategy 4: Fetching from NewsAPI...")
+            
+            try:
+                url = "https://newsapi.org/v2/everything"
+                params = {
+                    "apiKey": NEWS_API_KEY,
+                    "q": topic,
+                    "language": "en",
+                    "sortBy": "publishedAt",
+                    "pageSize": 100,
+                    "from": start_date.strftime("%Y-%m-%d"),
+                }
+                
+                response = requests.get(url, params=params, timeout=15)
+                
+                if response.status_code == 200:
+                    data = response.json()
                     
-                try:
-                    url = "https://newsapi.org/v2/everything"
-                    params = {
-                        "apiKey": NEWS_API_KEY,
-                        "q": search_query,
-                        "language": "en",
-                        "sortBy": "publishedAt",
-                        "pageSize": 100,
-                        "from": start_date.strftime("%Y-%m-%d"),
-                        "to": end_date.strftime("%Y-%m-%d")
-                    }
-                    
-                    logger.info(f"🌐 Searching NewsAPI with query: '{search_query}'")
-                    response = requests.get(url, params=params, timeout=15)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
+                    if data.get("status") == "ok" and data.get("articles"):
+                        logger.info(f"✅ NewsAPI returned {len(data['articles'])} articles")
                         
-                        if data.get("status") == "ok" and data.get("articles"):
-                            logger.info(f"✅ NewsAPI returned {len(data['articles'])} articles")
-                            
-                            # Save articles to database
-                            for item in data["articles"]:
-                                if item.get("title") and item.get("url"):
+                        seen_urls = {a["url"] for a in articles}
+                        for item in data["articles"]:
+                            if item.get("title") and item.get("url") and item["title"] != "[Removed]":
+                                if item["url"] not in seen_urls:
                                     article = {
                                         "title": item["title"],
                                         "description": item.get("description", ""),
@@ -496,145 +553,98 @@ async def analyze_narrative(request: NarrativeRequest):
                                         "category": "general",
                                         "fetchedAt": datetime.utcnow(),
                                     }
+                                    
+                                    # Save to database
                                     news_collection.update_one(
                                         {"url": article["url"]},
                                         {"$set": article},
                                         upsert=True
                                     )
-                                    fetched_count += 1
-                            
-                            logger.info(f"💾 Saved {fetched_count} relevant articles")
-                        else:
-                            logger.warning(f"⚠️ NewsAPI status: {data.get('status')}, message: {data.get('message', 'No message')}")
-                    else:
-                        logger.error(f"❌ NewsAPI HTTP {response.status_code}: {response.text[:200]}")
+                                    
+                                    articles.append(article)
+                                    seen_urls.add(article["url"])
                         
-                except Exception as fetch_error:
-                    logger.error(f"❌ Failed to fetch from NewsAPI: {str(fetch_error)}")
-                    
-            # Re-query database after fetching
-            articles = list(news_collection.find(query).sort("fetchedAt", -1).limit(200))
-            logger.info(f"📊 After fetching: {len(articles)} total articles")
+                        logger.info(f"💾 After NewsAPI fetch: {len(articles)} total articles")
+            except Exception as e:
+                logger.error(f"❌ NewsAPI fetch failed: {str(e)}")
         
+        # Final check
         if len(articles) < 3:
-            # Still not enough articles - provide helpful error
-            suggestions = []
+            logger.error(f"❌ Insufficient articles: only {len(articles)} found")
             
-            # Get some recent topics from database
-            recent_articles = list(news_collection.find().sort("fetchedAt", -1).limit(50))
-            recent_topics = set()
-            for article in recent_articles:
+            # Get sample topics from database
+            sample_articles = list(news_collection.find().sort("fetchedAt", -1).limit(20))
+            sample_topics = []
+            for article in sample_articles:
                 title = article.get("title", "")
-                # Extract potential topics (simple extraction)
-                words = title.split()
-                for i, word in enumerate(words):
-                    if len(word) > 5 and word[0].isupper():
-                        if i < len(words) - 1:
-                            topic_candidate = f"{word} {words[i+1]}"
-                            recent_topics.add(topic_candidate)
+                # Extract capitalized phrases as potential topics
+                import re
+                matches = re.findall(r'([A-Z][a-z]+(?: [A-Z][a-z]+)*)', title)
+                sample_topics.extend(matches[:2])
             
-            suggestions = list(recent_topics)[:5]
+            sample_topics = list(set(sample_topics))[:5]
             
             raise HTTPException(
-                status_code=404, 
+                status_code=404,
                 detail={
-                    "message": f"Insufficient articles found for '{topic}' (found {len(articles)}). Try a broader search term or different topic.",
-                    "suggestions": suggestions if suggestions else [
-                        "Elections 2024",
-                        "Economic Policy",
+                    "message": f"Found only {len(articles)} articles for '{topic}'. Need at least 3 articles for analysis.",
+                    "suggestions": sample_topics if sample_topics else [
                         "Technology",
-                        "Climate Change",
-                        "Healthcare"
+                        "Elections",
+                        "Economy",
+                        "Healthcare",
+                        "Climate"
                     ],
-                    "tip": "Try searching for broader topics like 'Elections', 'Economy', or 'Technology' for better results."
+                    "tip": "Try broader terms or popular topics from recent news"
                 }
             )
         
-        # Prepare article data for AI analysis
-        article_texts = []
-        sources = set()
-        dates = []
+        logger.info(f"✅ Analysis ready with {len(articles)} articles")
+        
+        # Prepare article summaries for AI (limit to most relevant/recent 30)
+        articles = articles[:30]
+        article_summaries = []
         
         for article in articles:
-            article_texts.append({
+            article_summaries.append({
                 "title": article.get("title", ""),
-                "description": article.get("description", ""),
+                "description": article.get("description", "")[:200],  # Truncate long descriptions
                 "source": article.get("source", "Unknown"),
-                "publishedAt": article.get("publishedAt", ""),
-                "fetchedAt": article.get("fetchedAt")
+                "date": article.get("publishedAt", "")[:10] if article.get("publishedAt") else "",
             })
-            sources.add(article.get("source", "Unknown"))
-            if article.get("fetchedAt"):
-                dates.append(article["fetchedAt"])
         
-        logger.info(f"🧠 Sending {len(article_texts)} articles to AI for analysis...")
-        
-        # Build AI analysis prompt
-        prompt = f"""You are an expert media analyst specializing in narrative patterns and propaganda detection.
+        # Enhanced AI prompt with better structure
+        prompt = f"""Analyze media narrative for: "{topic}"
 
-Analyze the following {len(articles)} news articles about "{topic}" collected over the past {days} days.
+Dataset: {len(articles)} articles from past {days} days
 
-TASK: Provide a comprehensive narrative analysis detecting patterns, trends, sentiment shifts, and manipulation indicators.
+Sample Articles:
+{chr(10).join([f"{i+1}. [{a['source']}] {a['title']}" for i, a in enumerate(article_summaries[:10])])}
 
-ARTICLES DATA:
-{str(article_texts[:50])}
+Provide JSON analysis:
 
-ANALYSIS REQUIREMENTS:
-
-1. **Narrative Pattern** (Required):
-   - Is coverage rising or declining?
-   - What's the dominant trend (Rising, Stable, Declining, Volatile)?
-   - Overall sentiment (Positive, Negative, Mixed, Neutral)
-   - Intensity level (0-100%)
-
-2. **Timeline Analysis** (5-7 key dates):
-   - Date: [YYYY-MM-DD format]
-   - Article count on that date
-   - Sentiment on that date
-   - Key events that day (2-3 specific events)
-
-3. **Key Narratives** (Top 3-5):
-   - Specific narrative/storyline being pushed
-   - Frequency (how many times mentioned)
-   - Sources promoting it
-   - When it first appeared
-   - When it peaked
-
-4. **Manipulation Indicators**:
-   - Coordinated timing: Do multiple outlets publish similar stories at same time?
-   - Source clustering: Are only certain types of outlets covering this?
-   - Sentiment uniformity: Is sentiment suspiciously uniform across sources?
-   - Sudden spike: Was there an unnatural surge in coverage?
-   - Explanation: WHY you detected manipulation (be specific)
-
-5. **Context**:
-   - Major events during this period (3-5 specific events with dates)
-   - Related topics being covered
-   - Potential triggers for this narrative
-
-RESPONSE FORMAT (MUST BE VALID JSON):
 {{
   "narrativePattern": {{
     "rising": true/false,
     "trend": "Rising/Stable/Declining/Volatile",
     "sentiment": "Positive/Negative/Mixed/Neutral",
-    "intensity": 75
+    "intensity": 0-100
   }},
   "timeline": [
     {{
-      "date": "2024-01-15",
-      "count": 12,
-      "sentiment": "Negative",
-      "keyEvents": ["Event 1", "Event 2"]
+      "date": "YYYY-MM-DD",
+      "count": number,
+      "sentiment": "sentiment",
+      "keyEvents": ["event 1", "event 2"]
     }}
   ],
   "keyNarratives": [
     {{
-      "narrative": "Specific storyline being pushed",
-      "frequency": 45,
-      "sources": ["Source 1", "Source 2"],
-      "firstAppeared": "2024-01-10",
-      "peakDate": "2024-01-15"
+      "narrative": "main storyline",
+      "frequency": number,
+      "sources": ["source1", "source2"],
+      "firstAppeared": "YYYY-MM-DD",
+      "peakDate": "YYYY-MM-DD"
     }}
   ],
   "manipulation_indicators": {{
@@ -642,18 +652,18 @@ RESPONSE FORMAT (MUST BE VALID JSON):
     "source_clustering": true/false,
     "sentiment_uniformity": true/false,
     "sudden_spike": true/false,
-    "explanation": "Detailed explanation with specific examples"
+    "explanation": "detailed explanation"
   }},
   "context": {{
-    "majorEvents": ["Event 1 (Date)", "Event 2 (Date)"],
-    "relatedTopics": ["Topic 1", "Topic 2"],
-    "potentialTriggers": ["Trigger 1", "Trigger 2"]
+    "majorEvents": ["event 1", "event 2"],
+    "relatedTopics": ["topic1", "topic2"],
+    "potentialTriggers": ["trigger1", "trigger2"]
   }}
 }}
 
-Be extremely specific and cite actual article titles/dates. No speculation."""
+Be specific and cite actual articles."""
 
-        # Call NVIDIA AI API
+        # Call AI
         try:
             headers = {
                 "Authorization": f"Bearer {NVIDIA_API_KEY}",
@@ -665,10 +675,10 @@ Be extremely specific and cite actual article titles/dates. No speculation."""
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
                 "top_p": 0.85,
-                "max_tokens": 4000
+                "max_tokens": 3000
             }
             
-            logger.info("🤖 Calling NVIDIA AI API...")
+            logger.info("🤖 Calling AI for analysis...")
             response = requests.post(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
                 headers=headers,
@@ -680,20 +690,18 @@ Be extremely specific and cite actual article titles/dates. No speculation."""
             ai_response = response.json()
             content = ai_response["choices"][0]["message"]["content"]
             
-            logger.info(f"✅ AI analysis received ({len(content)} characters)")
+            logger.info(f"✅ AI response received")
             
-            # Extract JSON from response
+            # Parse JSON
             import json
             import re
             
-            # Try to find JSON block
             json_match = re.search(r'\{[\s\S]*\}', content)
             if json_match:
                 analysis_data = json.loads(json_match.group(0))
             else:
                 analysis_data = json.loads(content)
             
-            # Add metadata
             result = {
                 "status": "success",
                 "analysis": {
@@ -701,8 +709,8 @@ Be extremely specific and cite actual article titles/dates. No speculation."""
                     "timeframe": f"{days} days",
                     "totalArticles": len(articles),
                     "narrativePattern": analysis_data.get("narrativePattern", {}),
-                    "timeline": analysis_data.get("timeline", [])[:10],  # Limit timeline
-                    "keyNarratives": analysis_data.get("keyNarratives", [])[:5],  # Limit narratives
+                    "timeline": analysis_data.get("timeline", [])[:8],
+                    "keyNarratives": analysis_data.get("keyNarratives", [])[:5],
                     "manipulation_indicators": analysis_data.get("manipulation_indicators", {}),
                     "context": analysis_data.get("context", {})
                 }
@@ -711,13 +719,9 @@ Be extremely specific and cite actual article titles/dates. No speculation."""
             logger.info(f"✅ Narrative analysis complete for '{topic}'")
             return result
             
-        except requests.exceptions.RequestException as api_error:
-            logger.error(f"❌ AI API Error: {str(api_error)}")
-            raise HTTPException(status_code=500, detail="AI analysis API error")
-        except json.JSONDecodeError as json_error:
-            logger.error(f"❌ JSON Parse Error: {str(json_error)}")
-            logger.error(f"AI Response content: {content[:500]}")
-            # Return basic analysis if AI fails
+        except Exception as e:
+            logger.error(f"❌ AI analysis failed: {str(e)}")
+            # Return basic analysis
             return {
                 "status": "success",
                 "analysis": {
@@ -731,13 +735,19 @@ Be extremely specific and cite actual article titles/dates. No speculation."""
                         "intensity": 50
                     },
                     "timeline": [],
-                    "keyNarratives": [],
+                    "keyNarratives": [{
+                        "narrative": f"Coverage of {topic}",
+                        "frequency": len(articles),
+                        "sources": list(set([a.get("source", "Unknown") for a in articles[:5]])),
+                        "firstAppeared": articles[-1].get("publishedAt", "")[:10] if articles else "",
+                        "peakDate": articles[0].get("publishedAt", "")[:10] if articles else ""
+                    }],
                     "manipulation_indicators": {
                         "coordinated_timing": False,
                         "source_clustering": False,
                         "sentiment_uniformity": False,
                         "sudden_spike": False,
-                        "explanation": "Analysis inconclusive - AI response parsing failed"
+                        "explanation": "AI analysis unavailable - showing basic statistics"
                     },
                     "context": {
                         "majorEvents": [],
@@ -745,14 +755,14 @@ Be extremely specific and cite actual article titles/dates. No speculation."""
                         "potentialTriggers": []
                     }
                 },
-                "message": "Analysis completed with limited AI insights"
+                "message": "Basic analysis provided (AI unavailable)"
             }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Narrative analysis error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Narrative analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.get("/health")
 async def health_check():

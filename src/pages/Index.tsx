@@ -10,7 +10,11 @@ import JournalistAnalyzer from "@/components/JournalistAnalyzer";
 import News from "@/components/News";
 
 const Index = () => {
-  const [showIntro, setShowIntro] = useState(true);
+  // Check if user has already seen the intro in this session
+  const [showIntro, setShowIntro] = useState(() => {
+    const hasSeenIntro = sessionStorage.getItem('hasSeenIntro');
+    return hasSeenIntro !== 'true';
+  });
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = "smooth";
@@ -20,8 +24,13 @@ const Index = () => {
     };
   }, []);
 
+  const handleIntroComplete = () => {
+    setShowIntro(false);
+    sessionStorage.setItem('hasSeenIntro', 'true');
+  };
+
   if (showIntro) {
-    return <IntroPage onComplete={() => setShowIntro(false)} />;
+    return <IntroPage onComplete={handleIntroComplete} />;
   }
 
   return (
