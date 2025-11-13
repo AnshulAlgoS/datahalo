@@ -112,25 +112,91 @@ export default function JournalistProfile() {
   const navigate = useNavigate();
   const [data, setData] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    // Get data from sessionStorage (passed from analyzer)
-    const storedData = sessionStorage.getItem(`journalist_${name}`);
-    if (storedData) {
-      setData(JSON.parse(storedData));
-      setLoading(false);
-    } else {
-      // Redirect back to home page if no data
-      navigate("/");
-    }
+    const fetchProfileData = async () => {
+      if (!name) {
+        navigate("/");
+        return;
+      }
+
+      try {
+        setLoading(true);
+        
+        // First, try to get data from sessionStorage
+        const storedData = sessionStorage.getItem(`journalist_${name}`);
+        if (storedData) {
+          setData(JSON.parse(storedData));
+          setLoading(false);
+          return;
+        }
+
+        // If not in sessionStorage, fetch from API
+        const API_URL = import.meta.env.VITE_API_URL || "https://datahalo.onrender.com" || "http://localhost:8000";
+        const response = await fetch(`${API_URL}/journalist/${encodeURIComponent(name)}`);
+        
+        if (!response.ok) {
+          throw new Error("Failed to fetch journalist data");
+        }
+
+        const apiData = await response.json();
+        
+        if (apiData.status === "success" && apiData.journalist) {
+          // Transform API response to match expected format
+          const profileData: AnalysisData = {
+            status: "success",
+            journalist: apiData.journalist.name,
+            articlesAnalyzed: apiData.journalist.articlesAnalyzed,
+            aiProfile: apiData.journalist.aiProfile
+          };
+          
+          setData(profileData);
+          
+          // Store in sessionStorage for future use
+          sessionStorage.setItem(`journalist_${name}`, JSON.stringify(profileData));
+        } else {
+          throw new Error("Invalid data received from server");
+        }
+      } catch (err) {
+        console.error("Error fetching profile:", err);
+        setError("Failed to load profile. The journalist may not be analyzed yet.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfileData();
   }, [name, navigate]);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary mx-auto"></div>
           <p className="mt-4 text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-xl mb-4">
+            <AlertTriangle className="w-16 h-16 text-destructive mx-auto" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Profile Not Found</h2>
+          <p className="text-muted-foreground mb-6">
+            {error || "This journalist hasn't been analyzed yet."}
+          </p>
+          <button
+            onClick={() => navigate("/")}
+            className="px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-semibold transition-colors"
+          >
+            Go to Analyzer
+          </button>
         </div>
       </div>
     );
