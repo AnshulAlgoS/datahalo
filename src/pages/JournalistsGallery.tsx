@@ -45,6 +45,7 @@ const JournalistsGallery = () => {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterLevel, setFilterLevel] = useState<string>("all");
+  const [fetchingProfile, setFetchingProfile] = useState(false);
 
   useEffect(() => {
     fetchJournalists();
@@ -74,6 +75,38 @@ const JournalistsGallery = () => {
     const matchesFilter = filterLevel === "all" || j.aiProfile?.haloScore?.level === filterLevel;
     return matchesSearch && matchesFilter;
   });
+
+  const handleViewProfile = async (journalistName: string) => {
+    try {
+      setFetchingProfile(true);
+      
+      // Fetch full journalist data from API
+      const response = await fetch(`${API_URL}/journalist/${encodeURIComponent(journalistName)}`);
+      const data = await response.json();
+      
+      if (data.status === "success" && data.journalist) {
+        // Store the full data in sessionStorage for the profile page
+        const profileData = {
+          status: "success",
+          journalist: data.journalist.name,
+          articlesAnalyzed: data.journalist.articlesAnalyzed,
+          aiProfile: data.journalist.aiProfile
+        };
+        
+        sessionStorage.setItem(`journalist_${journalistName}`, JSON.stringify(profileData));
+        
+        // Navigate to profile page
+        navigate(`/profile/${encodeURIComponent(journalistName)}`);
+      } else {
+        setError("Failed to fetch journalist data");
+      }
+    } catch (err) {
+      console.error("Error fetching journalist profile:", err);
+      setError("Failed to load profile. Please try again.");
+    } finally {
+      setFetchingProfile(false);
+    }
+  };
 
   const getHaloScoreColor = (score?: number) => {
     if (!score) return "text-muted-foreground";
@@ -106,6 +139,16 @@ const JournalistsGallery = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Loading Overlay */}
+      {fetchingProfile && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
+            <p className="text-foreground font-semibold">Loading profile...</p>
+          </div>
+        </div>
+      )}
+      
       {/* Background effects */}
       <div className="absolute inset-0 bg-gradient-to-b from-background via-muted/20 to-background" />
       
@@ -246,7 +289,7 @@ const JournalistsGallery = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: index * 0.05 }}
-                  onClick={() => navigate(`/profile/${encodeURIComponent(journalist.name)}`)}
+                  onClick={() => handleViewProfile(journalist.name)}
                   className="group relative cursor-pointer"
                 >
                   <div className={`relative p-6 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 transition-all duration-500 h-full ${journalist.aiProfile?.haloScore?.score ? getHaloScoreGlow(journalist.aiProfile.haloScore.score) : ""}`}>
