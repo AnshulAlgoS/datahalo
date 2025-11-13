@@ -253,13 +253,6 @@ const HeroSection = () => {
               <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity" />
             </Button>
 
-            <Button
-              size="lg"
-              variant="outline"
-              className="px-8 py-6 text-lg font-semibold border-2 border-primary/50 hover:border-primary hover:bg-primary/10 rounded-xl"
-            >
-              Claim Profile
-            </Button>
           </div>
         </motion.div>
       </div>
