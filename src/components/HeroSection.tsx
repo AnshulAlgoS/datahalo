@@ -230,7 +230,7 @@ const HeroSection = () => {
           </h1>
 
           <h2 className="text-3xl md:text-5xl font-bold mb-4 text-foreground">
-            AI-Powered Credibility Score
+            AI-Powered Media Integrity
           </h2>
           <h3 className="text-xl md:text-2xl mb-8 text-muted-foreground">
             for Journalists
