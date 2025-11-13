@@ -1,0 +1,603 @@
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import {
+  TrendingUp,
+  ArrowLeft,
+  Calendar,
+  Newspaper,
+  Target,
+  AlertCircle,
+  Loader2,
+  BarChart3,
+  LineChart,
+  Eye,
+  Clock,
+  Zap,
+  Filter,
+  Download
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const API_URL = import.meta.env.VITE_API_URL || "https://datahalo.onrender.com" || "http://localhost:8000";
+
+interface NarrativeAnalysis {
+  topic: string;
+  timeframe: string;
+  totalArticles: number;
+  narrativePattern: {
+    rising: boolean;
+    trend: string;
+    sentiment: string;
+    intensity: number;
+  };
+  timeline: Array<{
+    date: string;
+    count: number;
+    sentiment: string;
+    keyEvents: string[];
+  }>;
+  keyNarratives: Array<{
+    narrative: string;
+    frequency: number;
+    sources: string[];
+    firstAppeared: string;
+    peakDate: string;
+  }>;
+  manipulation_indicators: {
+    coordinated_timing: boolean;
+    source_clustering: boolean;
+    sentiment_uniformity: boolean;
+    sudden_spike: boolean;
+    explanation: string;
+  };
+  context: {
+    majorEvents: string[];
+    relatedTopics: string[];
+    potentialTriggers: string[];
+  };
+}
+
+const NarrativeAnalyzer = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState("");
+  const [topic, setTopic] = useState("");
+  const [timeframe, setTimeframe] = useState("30");
+  const [analysis, setAnalysis] = useState<NarrativeAnalysis | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  const suggestedTopics = [
+    "Elections 2024",
+    "Farmer Protests",
+    "Economic Reforms",
+    "Foreign Policy",
+    "Climate Change",
+    "Healthcare Policy",
+    "Education Reforms",
+    "Technology Regulation"
+  ];
+
+  const analyzeNarrative = async () => {
+    if (!topic.trim()) {
+      setError("Please enter a topic to analyze");
+      return;
+    }
+
+    try {
+      setAnalyzing(true);
+      setError("");
+      
+      const response = await fetch(`${API_URL}/analyze-narrative`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topic: topic,
+          days: parseInt(timeframe),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "success") {
+        setAnalysis(data.analysis);
+      } else if (response.status === 404 && data.detail) {
+        // Handle 404 with suggestions
+        const detail = typeof data.detail === 'string' ? { message: data.detail } : data.detail;
+        setError(detail.message || data.detail);
+        if (detail.suggestions) {
+          setSuggestions(detail.suggestions);
+        }
+      } else {
+        setError(data.message || data.detail || "Failed to analyze narrative");
+      }
+    } catch (err) {
+      setError("Failed to connect to server. Please check your connection.");
+      console.error(err);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const getSentimentColor = (sentiment: string) => {
+    if (sentiment.toLowerCase().includes("positive")) return "text-green-500";
+    if (sentiment.toLowerCase().includes("negative")) return "text-red-500";
+    return "text-yellow-500";
+  };
+
+  const getSentimentBg = (sentiment: string) => {
+    if (sentiment.toLowerCase().includes("positive")) return "bg-green-500/10 border-green-500/30";
+    if (sentiment.toLowerCase().includes("negative")) return "bg-red-500/10 border-red-500/30";
+    return "bg-yellow-500/10 border-yellow-500/30";
+  };
+
+  return (
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Background effects */}
+      <div className="absolute inset-0 bg-gradient-to-b from-background via-muted/20 to-background" />
+      
+      {/* Animated background blobs */}
+      <motion.div
+        animate={{ 
+          scale: [1, 1.2, 1],
+          opacity: [0.3, 0.5, 0.3],
+        }}
+        transition={{ duration: 8, repeat: Infinity }}
+        className="absolute top-20 right-20 w-96 h-96 bg-primary/20 rounded-full blur-[120px]"
+      />
+      <motion.div
+        animate={{ 
+          scale: [1.2, 1, 1.2],
+          opacity: [0.2, 0.4, 0.2],
+        }}
+        transition={{ duration: 10, repeat: Infinity }}
+        className="absolute bottom-20 left-20 w-96 h-96 bg-accent/20 rounded-full blur-[120px]"
+      />
+
+      {/* Content */}
+      <div className="relative z-10 min-h-screen">
+        {/* Header */}
+        <div className="border-b border-border/50 backdrop-blur-md bg-card/30 sticky top-0 z-30">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => navigate("/")}
+                  className="group px-4 py-2 bg-card/50 backdrop-blur-sm border border-border/50 hover:border-primary/50 rounded-xl transition-all"
+                >
+                  <ArrowLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" />
+                  Back to Home
+                </Button>
+                
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl">
+                    <Eye className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h1 className="font-orbitron text-2xl md:text-3xl font-bold">
+                      Narrative <span className="text-primary">Analyzer</span>
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      Uncover hidden patterns in media coverage
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          {/* Analyzer Interface */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="mb-12"
+          >
+            <div className="p-8 rounded-2xl bg-card/50 backdrop-blur-md border border-border/50">
+              {/* Info Banner */}
+              <div className="mb-6 p-4 rounded-xl bg-primary/10 border border-primary/30">
+                <div className="flex items-start gap-3">
+                  <Target className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-primary mb-1">
+                      Understand Media Narratives
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Analyze how news coverage evolves over time. Track patterns, identify coordinated messaging, 
+                      and understand the context behind headlines. Perfect for researchers, academics, and informed citizens.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Interface */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-2">
+                      Topic or Event
+                    </label>
+                    <Input
+                      placeholder="e.g., Elections 2024, Farmer Protests..."
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      onKeyPress={(e) => e.key === "Enter" && analyzeNarrative()}
+                      className="bg-card/50 backdrop-blur-sm border-border/50 focus:border-primary/50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Time Period
+                    </label>
+                    <Select value={timeframe} onValueChange={setTimeframe}>
+                      <SelectTrigger className="bg-card/50 backdrop-blur-sm border-border/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="7">Last 7 Days</SelectItem>
+                        <SelectItem value="14">Last 2 Weeks</SelectItem>
+                        <SelectItem value="30">Last Month</SelectItem>
+                        <SelectItem value="60">Last 2 Months</SelectItem>
+                        <SelectItem value="90">Last 3 Months</SelectItem>
+                        <SelectItem value="180">Last 6 Months</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Suggested Topics */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Quick Topics
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedTopics.map((suggested) => (
+                      <Button
+                        key={suggested}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTopic(suggested)}
+                        className="text-xs hover:bg-primary/10 hover:border-primary/50"
+                      >
+                        {suggested}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Analyze Button */}
+                <Button
+                  onClick={analyzeNarrative}
+                  disabled={analyzing || !topic.trim()}
+                  className="w-full py-6 text-lg font-semibold bg-primary hover:bg-primary/90 rounded-xl"
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Analyzing Narrative Patterns...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5 mr-2" />
+                      Analyze Narrative
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/30">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-destructive font-semibold mb-2">{error}</p>
+                      
+                      {suggestions.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm text-muted-foreground mb-2">Try these topics instead:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {suggestions.map((suggestion, index) => (
+                              <Button
+                                key={index}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setTopic(suggestion);
+                                  setError("");
+                                  setSuggestions([]);
+                                }}
+                                className="text-xs hover:bg-primary/10 hover:border-primary/50"
+                              >
+                                {suggestion}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <p className="text-xs text-muted-foreground mt-3">
+                        💡 Tip: Try broader search terms like "Elections", "Economy", or "Technology" for better results.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Analysis Results */}
+          {analysis && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="space-y-6"
+            >
+              {/* Overview Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <Newspaper className="w-8 h-8 text-primary mb-2" />
+                  <div className="text-3xl font-bold">{analysis.totalArticles}</div>
+                  <div className="text-sm text-muted-foreground">Articles Found</div>
+                </div>
+
+                <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <TrendingUp className={`w-8 h-8 mb-2 ${analysis.narrativePattern.rising ? 'text-green-500' : 'text-orange-500'}`} />
+                  <div className="text-3xl font-bold">{analysis.narrativePattern.trend}</div>
+                  <div className="text-sm text-muted-foreground">Trend</div>
+                </div>
+
+                <div className={`p-6 rounded-xl backdrop-blur-md border ${getSentimentBg(analysis.narrativePattern.sentiment)}`}>
+                  <BarChart3 className={`w-8 h-8 mb-2 ${getSentimentColor(analysis.narrativePattern.sentiment)}`} />
+                  <div className="text-3xl font-bold">{analysis.narrativePattern.sentiment}</div>
+                  <div className="text-sm text-muted-foreground">Sentiment</div>
+                </div>
+
+                <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <Zap className="w-8 h-8 text-primary mb-2" />
+                  <div className="text-3xl font-bold">{analysis.narrativePattern.intensity}%</div>
+                  <div className="text-sm text-muted-foreground">Intensity</div>
+                </div>
+              </div>
+
+              {/* Manipulation Indicators */}
+              {(analysis.manipulation_indicators.coordinated_timing || 
+                analysis.manipulation_indicators.source_clustering || 
+                analysis.manipulation_indicators.sentiment_uniformity || 
+                analysis.manipulation_indicators.sudden_spike) && (
+                <div className="p-6 rounded-xl bg-orange-500/10 border border-orange-500/30">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-6 h-6 text-orange-500 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-orange-500 mb-2">
+                        ⚠️ Potential Narrative Manipulation Detected
+                      </h3>
+                      <p className="text-muted-foreground mb-3">
+                        {analysis.manipulation_indicators.explanation}
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {analysis.manipulation_indicators.coordinated_timing && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Clock className="w-4 h-4 text-orange-500" />
+                            <span>Coordinated Timing</span>
+                          </div>
+                        )}
+                        {analysis.manipulation_indicators.source_clustering && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Target className="w-4 h-4 text-orange-500" />
+                            <span>Source Clustering</span>
+                          </div>
+                        )}
+                        {analysis.manipulation_indicators.sentiment_uniformity && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <BarChart3 className="w-4 h-4 text-orange-500" />
+                            <span>Uniform Sentiment</span>
+                          </div>
+                        )}
+                        {analysis.manipulation_indicators.sudden_spike && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <TrendingUp className="w-4 h-4 text-orange-500" />
+                            <span>Sudden Spike</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Key Narratives */}
+              <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <LineChart className="w-5 h-5 text-primary" />
+                  Dominant Narratives
+                </h3>
+                <div className="space-y-4">
+                  {analysis.keyNarratives.map((narrative, index) => (
+                    <div key={index} className="p-4 rounded-xl bg-muted/30 border border-border/50">
+                      <div className="flex items-start justify-between gap-4 mb-2">
+                        <h4 className="font-semibold text-lg flex-1">{narrative.narrative}</h4>
+                        <div className="px-3 py-1 rounded-full bg-primary/10 border border-primary/30">
+                          <span className="text-sm font-bold text-primary">{narrative.frequency} mentions</span>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-primary" />
+                          <span>First: {narrative.firstAppeared}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-primary" />
+                          <span>Peak: {narrative.peakDate}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Newspaper className="w-4 h-4 text-primary" />
+                          <span>{narrative.sources.length} sources</span>
+                        </div>
+                      </div>
+
+                      {narrative.sources.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {narrative.sources.slice(0, 5).map((source, i) => (
+                            <span key={i} className="px-2 py-1 text-xs rounded-lg bg-background/50 border border-border/50">
+                              {source}
+                            </span>
+                          ))}
+                          {narrative.sources.length > 5 && (
+                            <span className="px-2 py-1 text-xs rounded-lg bg-background/50 border border-border/50">
+                              +{narrative.sources.length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Context & Timeline */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Major Events */}
+                <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-primary" />
+                    Major Events
+                  </h3>
+                  <ul className="space-y-2">
+                    {analysis.context.majorEvents.map((event, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-primary mt-2 flex-shrink-0" />
+                        <span className="text-muted-foreground">{event}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Related Topics */}
+                <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <Target className="w-5 h-5 text-primary" />
+                    Related Topics
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.context.relatedTopics.map((topic, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/30 text-sm hover:bg-primary/20 cursor-pointer transition-colors"
+                        onClick={() => {
+                          setTopic(topic);
+                          analyzeNarrative();
+                        }}
+                      >
+                        {topic}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline Visualization */}
+              {analysis.timeline && analysis.timeline.length > 0 && (
+                <div className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-primary" />
+                    Coverage Timeline
+                  </h3>
+                  <div className="space-y-3">
+                    {analysis.timeline.map((point, index) => (
+                      <div key={index} className="flex items-start gap-4">
+                        <div className="flex flex-col items-center">
+                          <div className={`w-4 h-4 rounded-full border-2 ${getSentimentBg(point.sentiment)}`} />
+                          {index < analysis.timeline.length - 1 && (
+                            <div className="w-0.5 h-16 bg-border/50" />
+                          )}
+                        </div>
+                        <div className="flex-1 pb-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-semibold">{point.date}</span>
+                            <span className={`text-sm ${getSentimentColor(point.sentiment)}`}>
+                              {point.sentiment}
+                            </span>
+                          </div>
+                          <div className="text-sm text-muted-foreground mb-2">
+                            {point.count} articles published
+                          </div>
+                          {point.keyEvents.length > 0 && (
+                            <div className="space-y-1">
+                              {point.keyEvents.map((event, i) => (
+                                <div key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                                  <span className="text-primary">•</span>
+                                  <span>{event}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* How It Works */}
+          {!analysis && !analyzing && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="grid grid-cols-1 md:grid-cols-3 gap-6"
+            >
+              {[
+                {
+                  icon: Newspaper,
+                  title: "Data Collection",
+                  description: "Analyzes news articles from multiple sources over your selected timeframe"
+                },
+                {
+                  icon: LineChart,
+                  title: "Pattern Recognition",
+                  description: "Identifies trends, coordinated messaging, and narrative shifts using AI"
+                },
+                {
+                  icon: Eye,
+                  title: "Context Awareness",
+                  description: "Provides historical context and highlights potential manipulation indicators"
+                }
+              ].map((step, index) => (
+                <div key={index} className="p-6 rounded-xl bg-card/50 backdrop-blur-md border border-border/50">
+                  <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl w-fit mb-4">
+                    <step.icon className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">{step.title}</h3>
+                  <p className="text-sm text-muted-foreground">{step.description}</p>
+                </div>
+              ))}
+            </motion.div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default NarrativeAnalyzer;

@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Users } from "lucide-react";
+import { Users, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import heroBg from "@/assets/hero-bg.jpeg";
 
@@ -261,13 +261,24 @@ const HeroSection = () => {
         </motion.div>
       </div>
 
-      {/* Top Right Button - View All Journalists */}
+      {/* Top Right Buttons - View All Journalists & Narrative Analyzer */}
       <motion.div
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6, delay: 0.3 }}
-        className="absolute top-6 right-6 z-20"
+        className="absolute top-6 right-6 z-20 flex gap-3"
       >
+        <Button
+          onClick={() => navigate("/narrative-analyzer")}
+          className="group relative px-6 py-3 bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 text-foreground hover:text-primary rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,200,255,0.4)]"
+        >
+          <Eye className="w-5 h-5 mr-2 inline-block transition-transform group-hover:scale-110" />
+          <span className="font-semibold">Narrative Analyzer</span>
+          
+          {/* Glow effect on hover */}
+          <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-primary/10 to-accent/10 pointer-events-none" />
+        </Button>
+
         <Button
           onClick={() => navigate("/journalists")}
           className="group relative px-6 py-3 bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 text-foreground hover:text-primary rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,200,255,0.4)]"

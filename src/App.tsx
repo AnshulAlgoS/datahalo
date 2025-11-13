@@ -7,7 +7,7 @@ import Index from "./pages/Index";
 import JournalistProfile from "./pages/JournalistProfile";
 import NotFound from "./pages/NotFound";
 import JournalistsGallery from "./pages/JournalistsGallery";
-
+import NarrativeAnalyzer from "./pages/NarrativeAnalyzer";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -20,6 +20,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/profile/:name" element={<JournalistProfile />} />
           <Route path="/journalists" element={<JournalistsGallery />} />
+          <Route path="/narrative-analyzer" element={<NarrativeAnalyzer />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
