@@ -33,9 +33,10 @@ interface AnalysisResponse {
       confidence: string;
       evidence: string;
     };
-    credibilityScore: {
+    haloScore: {
       score: number;
-      reasoning: string;
+      level: string;
+      description: string;
     };
     notableWorks: Array<{
       title: string;
@@ -183,11 +184,13 @@ export default function JournalistAnalyzer() {
     aiProfile?.digitalPresence?.profileImage || "/placeholder.jpg";
   const socialLinks = aiProfile?.digitalPresence?.verifiedLinks || [];
   const articles = aiProfile?.articlesAnalyzed?.keyArticles || [];
-  const credScore = aiProfile?.credibilityScore?.score || 0;
+  const haloScore = aiProfile?.haloScore?.score || 0;
+  const haloLevel = aiProfile?.haloScore?.level || "Unknown";
+  const haloDescription = aiProfile?.haloScore?.description || "";
   const recScore = aiProfile?.recommendationScore?.overall || 0;
 
   return (
-    <div className="max-w-6xl mx-auto mt-16 p-8 rounded-2xl shadow-xl bg-card/80 backdrop-blur-md border border-border space-y-8">
+    <div id="analyzer" className="max-w-6xl mx-auto mt-16 p-8 rounded-2xl shadow-xl bg-card/80 backdrop-blur-md border border-border space-y-8">
       {/* Header */}
       <motion.h1
         initial={{ opacity: 0, y: -10 }}
@@ -288,14 +291,22 @@ export default function JournalistAnalyzer() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground">
-                    Credibility Score
+                    Halo Score
                   </p>
                   <p className="text-3xl font-bold text-blue-500">
-                    {credScore}/100
+                    {haloScore}/100
+                  </p>
+                  <p className="text-xs text-blue-400 font-medium">
+                    {haloLevel}
                   </p>
                 </div>
                 <Target size={32} className="text-blue-500/50" />
               </div>
+              {haloDescription && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {haloDescription}
+                </p>
+              )}
             </div>
 
             <div className="p-4 rounded-lg bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/30">

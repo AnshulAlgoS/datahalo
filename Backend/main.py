@@ -224,9 +224,12 @@ async def get_journalists(limit: int = Query(20, description="Number of journali
                 "name": 1, 
                 "analysis_timestamp": 1, 
                 "articlesAnalyzed": 1,
-                "aiProfile.credibilityScore.score": 1,
+                "aiProfile.haloScore.score": 1,
+                "aiProfile.haloScore.level": 1,
+                "aiProfile.haloScore.description": 1,
                 "aiProfile.digitalPresence.profileImage": 1,
-                "aiProfile.mainTopics": 1
+                "aiProfile.mainTopics": 1,
+                "aiProfile.ideologicalBias": 1
             }
         ).sort("analysis_timestamp", -1).limit(limit))
         

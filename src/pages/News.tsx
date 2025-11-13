@@ -3,6 +3,30 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildApiUrl, API_ENDPOINTS } from "../config/api";
+import { 
+  Globe, 
+  Cpu, 
+  Building2, 
+  Trophy, 
+  Microscope, 
+  Clapperboard, 
+  Heart,
+  Users,
+  TrendingUp,
+  GraduationCap,
+  Target,
+  Zap,
+  ClipboardList,
+  RefreshCw,
+  Newspaper,
+  Brain,
+  Sparkles,
+  ExternalLink,
+  Calendar,
+  Tag,
+  AlertCircle,
+  Loader2
+} from "lucide-react";
 
 interface Article {
   title: string;
@@ -24,21 +48,21 @@ const News = () => {
   const [error, setError] = useState("");
 
   const categories = [
-    { value: "general", label: "🌐 General", icon: "🌍" },
-    { value: "technology", label: "💻 Technology", icon: "🚀" },
-    { value: "business", label: "💼 Business", icon: "📈" },
-    { value: "sports", label: "⚽ Sports", icon: "🏆" },
-    { value: "science", label: "🔬 Science", icon: "🧪" },
-    { value: "entertainment", label: "🎬 Entertainment", icon: "🎭" },
-    { value: "health", label: "🏥 Health", icon: "💊" }
+    { value: "general", label: "General", icon: Globe },
+    { value: "technology", label: "Technology", icon: Cpu },
+    { value: "business", label: "Business", icon: Building2 },
+    { value: "sports", label: "Sports", icon: Trophy },
+    { value: "science", label: "Science", icon: Microscope },
+    { value: "entertainment", label: "Entertainment", icon: Clapperboard },
+    { value: "health", label: "Health", icon: Heart }
   ];
 
   const perspectives = [
-    { value: "general public", label: "👥 General Public", icon: "🌍" },
-    { value: "finance analyst", label: "📊 Finance Analyst", icon: "💰" },
-    { value: "government exam aspirant", label: "📚 Govt. Exam Aspirant", icon: "🎯" },
-    { value: "tech student", label: "💻 Tech Student", icon: "⚡" },
-    { value: "business student", label: "🎓 Business Student", icon: "📋" }
+    { value: "general public", label: "General Public", icon: Users },
+    { value: "finance analyst", label: "Finance Analyst", icon: TrendingUp },
+    { value: "government exam aspirant", label: "Govt. Exam Aspirant", icon: GraduationCap },
+    { value: "tech student", label: "Tech Student", icon: Cpu },
+    { value: "business student", label: "Business Student", icon: ClipboardList }
   ];
 
   const fetchNews = async () => {
@@ -134,17 +158,17 @@ const News = () => {
 
   const selectedCategory = categories.find(cat => cat.value === category);
   const selectedPerspective = perspectives.find(persp => persp.value === perspective);
+  const CategoryIcon = selectedCategory?.icon || Globe;
+  const PerspectiveIcon = selectedPerspective?.icon || Users;
 
   return (
-    <section className="relative min-h-screen bg-black text-white overflow-hidden p-8 flex flex-col items-center">
-      {/* Animated Background */}
-      <motion.div
-        className="absolute inset-0 bg-gradient-to-b from-[#000814] via-[#00111f] to-black"
-        animate={{ opacity: [0.9, 1, 0.9] }}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-      />
-
-      <div className="relative z-10 w-full max-w-7xl">
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Background Effects */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-card/30 to-background" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-[100px] animate-pulse" />
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-[100px] animate-pulse delay-1000" />
+      
+      <div className="relative z-10 container mx-auto px-4 py-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -30 }}
@@ -152,22 +176,30 @@ const News = () => {
           transition={{ duration: 0.8 }}
           className="text-center mb-12"
         >
-          <h1 className="text-6xl font-orbitron font-bold mb-4 bg-gradient-to-r from-[#00bfff] to-[#00e5ff] bg-clip-text text-transparent">
-            ⚡ DataHalo News Hub
-          </h1>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Get the latest news and AI-powered insights tailored to your perspective
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="p-3 bg-primary/10 rounded-2xl border border-primary/20">
+              <Newspaper className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-primary/80 to-secondary bg-clip-text text-transparent">
+              News Intelligence
+            </h1>
+          </div>
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+            AI-powered news analysis and insights tailored to your perspective
           </p>
         </motion.div>
 
         {/* Error Display */}
         {error && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-6 text-center"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-destructive/10 border border-destructive/20 rounded-2xl p-4 mb-8 max-w-2xl mx-auto"
           >
-            <p className="text-red-200">❌ {error}</p>
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+              <p className="text-destructive font-medium">{error}</p>
+            </div>
           </motion.div>
         )}
 
@@ -176,102 +208,122 @@ const News = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="flex flex-wrap gap-6 justify-center items-center mb-12 p-6 bg-gradient-to-r from-[#001122] to-[#002244] rounded-2xl border border-[#00bfff30]"
+          className="bg-card/50 backdrop-blur-md border border-border/50 rounded-3xl p-8 mb-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)]"
         >
-          <div className="flex flex-col items-center gap-2">
-            <label className="text-sm font-medium text-[#00d4ff]">📰 Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="px-4 py-3 bg-[#000814] border border-[#00bfff60] rounded-xl focus:outline-none focus:border-[#00bfff] text-white font-medium min-w-[160px] transition-all duration-200"
-            >
-              {categories.map(cat => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.icon} {cat.label.replace(/🌐|💻|💼|⚽|🔬|🎬|🏥/, '')}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="flex flex-wrap gap-8 justify-center items-center">
+            {/* Category Selector */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Tag className="w-4 h-4" />
+                Category
+              </div>
+              <div className="relative">
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="appearance-none bg-background border border-border/50 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-foreground font-medium min-w-[160px] transition-all duration-200"
+                >
+                  {categories.map(cat => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </select>
+                <CategoryIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
 
-          <Button
-            onClick={refreshNews}
-            disabled={loading}
-            className="px-8 py-3 bg-gradient-to-r from-[#00bfff] to-[#00d4ff] hover:from-[#00d4ff] hover:to-[#00e5ff] text-black font-bold rounded-xl shadow-[0_0_25px_#00bfff60] transition-all duration-300 transform hover:scale-105"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin h-4 w-4 border-2 border-black border-t-transparent rounded-full mr-2" />
-                Loading...
-              </>
-            ) : (
-              <>🔄 Refresh {selectedCategory?.icon}</>
-            )}
-          </Button>
+            {/* Refresh Button */}
+            <Button
+              onClick={refreshNews}
+              disabled={loading}
+              size="lg"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-[0_0_20px_rgb(var(--primary)/0.3)] transition-all duration-300 hover:shadow-[0_0_30px_rgb(var(--primary)/0.4)] hover:scale-105 disabled:hover:scale-100"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh News
+                </>
+              )}
+            </Button>
+          </div>
         </motion.div>
 
-        {/* Basic News Feed */}
+        {/* News Grid */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
           className="mb-16"
         >
-          <h2 className="text-3xl font-bold mb-8 text-center text-[#00d4ff] flex items-center justify-center gap-3">
-            📰 Latest {selectedCategory?.label} News
-            <span className="text-lg bg-[#00bfff20] px-3 py-1 rounded-full">
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <CategoryIcon className="w-6 h-6 text-primary" />
+            <h2 className="text-3xl font-bold text-center">
+              Latest {selectedCategory?.label} News
+            </h2>
+            <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">
               {articles.length} articles
-            </span>
-          </h2>
+            </div>
+          </div>
 
           {articles.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {articles.slice(0, 24).map((article, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 30 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
+                  transition={{ delay: index * 0.03 }}
                   className="group"
                 >
-                  <Card className="h-full bg-gradient-to-br from-[#001122] to-[#002244] border border-[#00bfff40] hover:border-[#00bfff80] transition-all duration-300 transform hover:scale-105 hover:shadow-[0_0_30px_#00bfff40]">
+                  <Card className="h-full bg-card/50 backdrop-blur-sm border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:scale-[1.02]">
                     {article.image && (
                       <div className="relative overflow-hidden rounded-t-lg">
                         <img
                           src={article.image}
                           alt={article.title}
-                          className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
+                          className="w-full h-48 object-cover transition-transform duration-500 group-hover:scale-110"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
                           }}
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                       </div>
                     )}
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-lg font-semibold text-[#00d4ff] line-clamp-2 group-hover:text-[#00e5ff] transition-colors">
+                      <CardTitle className="text-lg font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors leading-snug">
                         {article.title}
                       </CardTitle>
-                      <CardDescription className="text-gray-300 text-sm line-clamp-3">
+                      <CardDescription className="text-muted-foreground text-sm line-clamp-3 leading-relaxed">
                         {article.description || "No description available."}
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="flex items-center justify-between text-xs text-gray-400 mb-3">
-                        <span className="bg-[#00bfff20] px-2 py-1 rounded-full">
-                          {article.source}
-                        </span>
-                        <span>
-                          {new Date(article.publishedAt).toLocaleDateString()}
-                        </span>
+                    <CardContent>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
+                        <div className="flex items-center gap-1 bg-secondary/10 px-2 py-1 rounded-full">
+                          <Tag className="w-3 h-3" />
+                          <span className="font-medium">{article.source}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
+                        </div>
                       </div>
                       <a
                         href={article.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center text-[#00bfff] hover:text-[#00e5ff] hover:underline transition-colors font-medium"
+                        className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-medium text-sm transition-colors group/link"
                       >
-                        Read Full Article →
+                        Read Full Article
+                        <ExternalLink className="w-3 h-3 transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
                       </a>
                     </CardContent>
                   </Card>
@@ -279,21 +331,25 @@ const News = () => {
               ))}
             </div>
           ) : loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin h-12 w-12 border-4 border-[#00bfff] border-t-transparent rounded-full" />
-              <span className="ml-4 text-xl text-gray-300">Loading articles...</span>
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <Loader2 className="w-12 h-12 text-primary animate-spin" />
+              <span className="text-xl text-muted-foreground">Loading latest articles...</span>
             </div>
           ) : (
             <div className="text-center py-16">
-              <p className="text-xl text-gray-400">No articles found for this category.</p>
-              <Button onClick={fetchNews} className="mt-4">
-                Try Again
-              </Button>
+              <div className="bg-muted/50 rounded-2xl p-8 max-w-md mx-auto">
+                <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-xl text-muted-foreground mb-4">No articles found</p>
+                <Button onClick={fetchNews} variant="outline">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
             </div>
           )}
         </motion.div>
 
-        {/* Smart Feed Section */}
+        {/* AI Smart Feed Section */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -301,44 +357,63 @@ const News = () => {
           className="mb-8"
         >
           <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-[#00ffcc] to-[#00d4ff] bg-clip-text text-transparent">
-              🧠 AI Smart Feed
-            </h2>
-            <p className="text-lg text-gray-300 max-w-3xl mx-auto">
-              Get personalized insights and analysis based on your perspective using advanced AI
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="p-3 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-2xl border border-primary/20">
+                <Brain className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                AI Smart Analysis
+              </h2>
+            </div>
+            <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              Get personalized insights and analysis powered by advanced AI technology
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-6 justify-center items-center mb-8 p-6 bg-gradient-to-r from-[#001122] to-[#002244] rounded-2xl border border-[#00ffcc30]">
-            <div className="flex flex-col items-center gap-2">
-              <label className="text-sm font-medium text-[#00ffcc]">🎯 Your Perspective</label>
-              <select
-                value={perspective}
-                onChange={(e) => setPerspective(e.target.value)}
-                className="px-4 py-3 bg-[#000814] border border-[#00ffcc60] rounded-xl focus:outline-none focus:border-[#00ffcc] text-white font-medium min-w-[200px] transition-all duration-200"
-              >
-                {perspectives.map(persp => (
-                  <option key={persp.value} value={persp.value}>
-                    {persp.icon} {persp.label.replace(/👥|📊|📚|💻|🎓/, '')}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="bg-card/50 backdrop-blur-md border border-border/50 rounded-3xl p-8 mb-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+            <div className="flex flex-wrap gap-8 justify-center items-center">
+              {/* Perspective Selector */}
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Target className="w-4 h-4" />
+                  Your Perspective
+                </div>
+                <div className="relative">
+                  <select
+                    value={perspective}
+                    onChange={(e) => setPerspective(e.target.value)}
+                    className="appearance-none bg-background border border-border/50 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-foreground font-medium min-w-[200px] transition-all duration-200"
+                  >
+                    {perspectives.map(persp => (
+                      <option key={persp.value} value={persp.value}>
+                        {persp.label}
+                      </option>
+                    ))}
+                  </select>
+                  <PerspectiveIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
 
-            <Button
-              onClick={generateSmartFeed}
-              disabled={aiLoading || articles.length === 0}
-              className="px-8 py-3 bg-gradient-to-r from-[#00ffcc] to-[#00d4ff] hover:from-[#00d4ff] hover:to-[#00e5ff] text-black font-bold rounded-xl shadow-[0_0_25px_#00ffcc60] transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
-            >
-              {aiLoading ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-black border-t-transparent rounded-full mr-2" />
-                  Analyzing...
-                </>
-              ) : (
-                <>⚙️ Generate Smart Analysis {selectedPerspective?.icon}</>
-              )}
-            </Button>
+              {/* Generate Button */}
+              <Button
+                onClick={generateSmartFeed}
+                disabled={aiLoading || articles.length === 0}
+                size="lg"
+                className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-primary-foreground rounded-xl shadow-[0_0_20px_rgb(var(--primary)/0.3)] transition-all duration-300 hover:shadow-[0_0_35px_rgb(var(--primary)/0.4)] hover:scale-105 disabled:hover:scale-100"
+              >
+                {aiLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate Smart Analysis
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           {/* Smart Feed Display */}
@@ -347,20 +422,26 @@ const News = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
-              className="relative"
             >
-              <Card className="bg-gradient-to-br from-[#001122] to-[#002244] border border-[#00ffcc60] shadow-[0_0_40px_#00ffcc30]">
+              <Card className="bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-md border border-primary/20 shadow-[0_0_40px_rgb(var(--primary)/0.1)]">
                 <CardHeader className="pb-4">
-                  <CardTitle className="text-2xl font-bold text-[#00ffcc] flex items-center gap-3">
-                    🧠 Smart Analysis for {selectedPerspective?.label}
+                  <CardTitle className="text-2xl font-bold flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-xl">
+                      <Brain className="w-6 h-6 text-primary" />
+                    </div>
+                    Smart Analysis
+                    <div className="ml-auto flex items-center gap-2 text-sm bg-primary/10 text-primary px-3 py-1 rounded-full">
+                      <PerspectiveIcon className="w-3 h-3" />
+                      {selectedPerspective?.label}
+                    </div>
                   </CardTitle>
-                  <CardDescription className="text-gray-300">
+                  <CardDescription>
                     AI-powered insights tailored to your perspective
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-invert max-w-none">
-                    <div className="text-gray-200 whitespace-pre-line leading-relaxed text-base">
+                  <div className="prose prose-neutral dark:prose-invert max-w-none">
+                    <div className="text-foreground/90 whitespace-pre-line leading-relaxed text-base">
                       {smartFeed}
                     </div>
                   </div>
@@ -372,14 +453,17 @@ const News = () => {
           {/* CTA when no smart feed */}
           {!smartFeed && !aiLoading && articles.length > 0 && (
             <div className="text-center py-8">
-              <p className="text-lg text-gray-400 mb-4">
-                Ready to get personalized insights? Select your perspective and generate your smart feed!
-              </p>
+              <div className="bg-muted/30 rounded-2xl p-6 max-w-2xl mx-auto">
+                <Zap className="w-8 h-8 text-primary mx-auto mb-4" />
+                <p className="text-lg text-muted-foreground mb-4">
+                  Ready for personalized insights? Select your perspective and generate your smart analysis!
+                </p>
+              </div>
             </div>
           )}
         </motion.div>
       </div>
-    </section>
+    </div>
   );
 };
 

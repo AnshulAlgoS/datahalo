@@ -1,4 +1,4 @@
-import { Home, Zap, Grid3x3, BarChart3, Globe, DollarSign, Mail } from "lucide-react";
+import { Home, Zap, Grid3x3, Search, Globe, DollarSign, Mail } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -7,7 +7,7 @@ const navItems = [
   { id: "hero", icon: Home, label: "Home" },
   { id: "how-it-works", icon: Zap, label: "How It Works" },
   { id: "features", icon: Grid3x3, label: "Features" },
-  { id: "dashboard", icon: BarChart3, label: "Dashboard" },
+  { id: "analyzer", icon: Search, label: "Analyzer" },
   { id: "impact", icon: Globe, label: "Impact" },
   { id: "news", icon: DollarSign, label: "News" }, 
   { id: "contact", icon: Mail, label: "Contact" },
@@ -22,7 +22,7 @@ const SideNav = () => {
       navigate("/news");
       return;
     }
-
+    
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
@@ -119,4 +119,3 @@ const SideNav = () => {
 };
 
 export default SideNav;
-

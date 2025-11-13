@@ -120,7 +120,7 @@ export default function JournalistProfile() {
       setData(JSON.parse(storedData));
       setLoading(false);
     } else {
-      // Redirect back if no data
+      // Redirect back to home page if no data
       navigate("/");
     }
   }, [name, navigate]);
@@ -159,11 +159,20 @@ export default function JournalistProfile() {
       <header className="sticky top-0 z-50 backdrop-blur-lg bg-card/80 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              navigate("/");
+              // Use setTimeout to ensure navigation completes before scrolling
+              setTimeout(() => {
+                const element = document.getElementById("analyzer");
+                if (element) {
+                  element.scrollIntoView({ behavior: "smooth" });
+                }
+              }, 100);
+            }}
             className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
           >
             <ArrowLeft size={20} />
-            <span className="font-medium">Back to Search</span>
+            <span className="font-medium">Back to Analyzer</span>
           </button>
           <h1 className="text-xl font-orbitron font-bold text-primary">
             DataHalo Profile

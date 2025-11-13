@@ -99,7 +99,6 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
     political_affiliation = analysis.get('political_affiliation', {})
     controversy_score = analysis.get('controversy_score', 0)
     controversy_snippets = analysis.get('controversy_snippets', [])
-    credibility_score = analysis.get('credibility_score', 5)
     credibility_indicators = analysis.get('credibility_indicators', [])
     
     # Extract awards
@@ -108,6 +107,23 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
     # Extract domain trust information
     domain_trust = primary_profile.get('trust_score', 0)
     
+    # Calculate Halo Score first
+    halo_data = {
+        'total_articles': len(article_corpus),
+        'social_links': social_presence,
+        'verification_rate': data.get('verification_rate', 0),
+        'awards': awards,
+        'domain_trust': domain_trust,
+        'controversy_score': controversy_score,
+        'articles': article_corpus,
+        'bio': bio,
+        'profile_image': profile_image,
+        'emails': emails,
+        'political_affiliation': political_affiliation
+    }
+    
+    halo_score_result = calculate_halo_score(name, halo_data)
+    
     # Build text corpus for AI
     corpus_parts = []
     
@@ -115,82 +131,108 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
     if bio:
         corpus_parts.append(f"=== BIOGRAPHY ===\n{bio}\n")
     
-    # 2. Political Affiliation (NEW)
+    # 2. Political Affiliation (Enhanced)
     if political_affiliation and political_affiliation.get('affiliation') != 'unknown':
         affiliation_text = "=== POLITICAL AFFILIATION ===\n"
         affiliation_text += f"Primary Affiliation: {political_affiliation.get('affiliation', 'Unknown')}\n"
         affiliation_text += f"Confidence: {political_affiliation.get('confidence', 0)}%\n"
         if political_affiliation.get('all_scores'):
             affiliation_text += f"Affiliation Scores: {json.dumps(political_affiliation['all_scores'], indent=2)}\n"
+        if political_affiliation.get('evidence'):
+            affiliation_text += f"Evidence: {political_affiliation.get('evidence', '')}\n"
         corpus_parts.append(affiliation_text)
     
-    # 3. Awards and Recognition (NEW)
+    # 3. Awards and Recognition (Enhanced)
     if awards:
         awards_text = "=== AWARDS & RECOGNITION ===\n"
-        for idx, award in enumerate(awards[:10], 1):
+        for idx, award in enumerate(awards[:15], 1):  # Increased from 10 to 15
             if isinstance(award, dict):
                 name_award = award.get('name', 'Award')
                 year = award.get('year', 'Unknown year')
                 context = award.get('context', '')
+                organization = award.get('organization', '')
                 awards_text += f"\n{idx}. {name_award}"
-                if year:
+                if year and year != 'Unknown year':
                     awards_text += f" ({year})"
+                if organization:
+                    awards_text += f" - {organization}"
                 if context:
-                    awards_text += f"\n   Context: {context[:200]}"
+                    awards_text += f"\n   Context: {context[:300]}"  # Increased context length
                 awards_text += "\n"
         corpus_parts.append(awards_text)
     
-    # 4. Articles (with links and metadata)
+    # 4. Notable Works (Enhanced - First 50 articles for better AI analysis)
     if article_corpus:
         articles_text = "=== PUBLISHED ARTICLES ===\n"
-        for idx, article in enumerate(article_corpus[:30], 1):  # Limit to 30 for token efficiency
+        for idx, article in enumerate(article_corpus[:50], 1):  # Increased from 30 to 50
             articles_text += f"\n{idx}. {article['title']}\n"
             articles_text += f"   URL: {article['url']}\n"
             articles_text += f"   Source: {article['domain']} (Trust Score: {article['trust_score']}/10)\n"
             articles_text += f"   Date: {article['publish_date']}\n"
             if article['snippet']:
-                articles_text += f"   Summary: {article['snippet'][:200]}\n"
+                articles_text += f"   Summary: {article['snippet'][:300]}\n"  # Increased snippet length
             if article['content_preview']:
-                articles_text += f"   Content Preview: {article['content_preview'][:300]}\n"
+                articles_text += f"   Content Preview: {article['content_preview'][:500]}\n"  # Increased preview length
         corpus_parts.append(articles_text)
     
-    # 5. Social Media Presence
+    # 5. Social Media Presence (Enhanced)
     if social_presence:
         social_text = "=== SOCIAL MEDIA PRESENCE ===\n"
         for platform, info in social_presence.items():
             social_text += f"- {platform.title()}: @{info['handle']} ({info['url']})\n"
+            # Add follower count if available
+            if info.get('followers'):
+                social_text += f"  Followers: {info['followers']}\n"
         corpus_parts.append(social_text)
     
-    # 6. Controversies
+    # 6. Controversies (Enhanced)
     if controversy_snippets:
         controversy_text = "=== CONTROVERSIES & CRITICISMS ===\n"
-        for idx, snippet in enumerate(controversy_snippets[:10], 1):
-            controversy_text += f"{idx}. [{snippet.get('severity', 'unknown').upper()}] {snippet.get('text', '')[:200]}\n"
+        for idx, snippet in enumerate(controversy_snippets[:15], 1):  # Increased from 10 to 15
+            if isinstance(snippet, dict):
+                severity = snippet.get('severity', 'unknown').upper()
+                text = snippet.get('text', '')
+                source = snippet.get('source', '')
+                date = snippet.get('date', '')
+                controversy_text += f"{idx}. [{severity}] {text[:300]}\n"  # Increased text length
+                if source:
+                    controversy_text += f"   Source: {source}\n"
+                if date:
+                    controversy_text += f"   Date: {date}\n"
         corpus_parts.append(controversy_text)
     
-    # 7. Credibility Indicators
+    # 7. Credibility Indicators (Enhanced)
     if credibility_indicators:
         cred_text = "=== CREDIBILITY INDICATORS ===\n"
         positive_indicators = [i for i in credibility_indicators if i.startswith('+')]
         negative_indicators = [i for i in credibility_indicators if i.startswith('-')]
+        neutral_indicators = [i for i in credibility_indicators if not i.startswith(('+', '-'))]
+        
         if positive_indicators:
-            cred_text += f"Positive: {', '.join(positive_indicators)}\n"
+            cred_text += f" Positive: {', '.join(positive_indicators)}\n"
         if negative_indicators:
-            cred_text += f"Negative: {', '.join(negative_indicators)}\n"
+            cred_text += f" Negative: {', '.join(negative_indicators)}\n"
+        if neutral_indicators:
+            cred_text += f" Neutral: {', '.join(neutral_indicators)}\n"
         corpus_parts.append(cred_text)
     
-    # 8. Tone & Bias Analysis
+    # 8. Enhanced Analysis Metrics
     analysis_text = "=== AUTOMATED ANALYSIS ===\n"
     analysis_text += f"Emotional Tone Score: {tone_score:.2f}/10\n"
     analysis_text += f"Detected Bias: {bias_label.title()}\n"
     if bias_scores:
         analysis_text += f"Bias Breakdown: {json.dumps(bias_scores, indent=2)}\n"
     analysis_text += f"Controversy Score: {controversy_score}/10\n"
-    analysis_text += f"Credibility Score: {credibility_score}/10\n"
+    analysis_text += f"Halo Score: {halo_score_result['score']}/100 ({halo_score_result['level']})\n"
+    analysis_text += f"Halo Breakdown: Reach={halo_score_result['breakdown']['reach_index']}, "
+    analysis_text += f"Engagement={halo_score_result['breakdown']['engagement_ratio']}, "
+    analysis_text += f"Transparency={halo_score_result['breakdown']['transparency_layer']}, "
+    analysis_text += f"Work={halo_score_result['breakdown']['work_footprint']}, "
+    analysis_text += f"Resonance={halo_score_result['breakdown']['public_resonance']}\n"
     corpus_parts.append(analysis_text)
     
-    # Combine all parts
-    text_corpus = "\n\n".join(corpus_parts)[:15000]  # Increased limit for more comprehensive data
+    # Combine all parts (increased limit for more comprehensive analysis)
+    text_corpus = "\n\n".join(corpus_parts)[:20000]  # Increased from 15000 to 20000
     
     return {
         "name": name,
@@ -204,11 +246,201 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
         "bias_label": bias_label,
         "political_affiliation": political_affiliation,
         "controversy_score": controversy_score,
-        "credibility_score": credibility_score,
+        "halo_score_result": halo_score_result,
         "domain_trust": domain_trust,
         "total_articles": len(article_corpus),
         "verification_rate": data.get('verification_rate', 0),
         "awards": awards,
+    }
+
+# ============================================================================
+# HALO SCORE CALCULATION
+# ============================================================================
+
+def calculate_halo_score(name: str, data: dict) -> dict:
+    """
+    Calculate the Halo Score - journalist's influence, transparency, and engagement fingerprint.
+    Not about right/wrong - about visibility, consistency, and accountability.
+    """
+    
+    # Extract data for calculation
+    total_articles = data.get('total_articles', 0)
+    social_links = data.get('social_links', {})
+    verification_rate = data.get('verification_rate', 0)
+    awards = data.get('awards', [])
+    domain_trust = data.get('domain_trust', 0)
+    controversy_score = data.get('controversy_score', 0)
+    
+    # REACH INDEX (0-25 points)
+    # Measures how widely journalist's work appears
+    reach_score = 0
+    if total_articles >= 100:
+        reach_score += 10  # High article count
+    elif total_articles >= 50:
+        reach_score += 7
+    elif total_articles >= 20:
+        reach_score += 5
+    elif total_articles >= 10:
+        reach_score += 3
+    
+    # Domain diversity bonus
+    if len(data.get('articles', [])) > 0:
+        domains = set()
+        for article in data['articles'][:30]:
+            domain = article.get('domain', '')
+            if domain:
+                domains.add(domain)
+        
+        if len(domains) >= 10:
+            reach_score += 8  # Very diverse reach
+        elif len(domains) >= 5:
+            reach_score += 5  # Good reach
+        elif len(domains) >= 3:
+            reach_score += 3  # Moderate reach
+    
+    # Award bonus for reach
+    if len(awards) >= 3:
+        reach_score += 7
+    elif len(awards) >= 1:
+        reach_score += 4
+    
+    reach_score = min(25, reach_score)  # Cap at 25
+    
+    # ENGAGEMENT RATIO (0-20 points)
+    # How people interact with their content
+    engagement_score = 0
+    
+    # Social media presence
+    social_platforms = len(social_links)
+    if social_platforms >= 4:
+        engagement_score += 8
+    elif social_platforms >= 2:
+        engagement_score += 5
+    elif social_platforms >= 1:
+        engagement_score += 3
+    
+    # Article engagement indicators (trust scores, verification)
+    if verification_rate >= 80:
+        engagement_score += 8
+    elif verification_rate >= 60:
+        engagement_score += 6
+    elif verification_rate >= 40:
+        engagement_score += 4
+    elif verification_rate >= 20:
+        engagement_score += 2
+    
+    # Domain trust factor
+    if domain_trust >= 8:
+        engagement_score += 4
+    elif domain_trust >= 6:
+        engagement_score += 2
+    
+    engagement_score = min(20, engagement_score)  # Cap at 20
+    
+    # TRANSPARENCY LAYER (0-25 points)
+    # How clearly they disclose affiliations/biases
+    transparency_score = 0
+    
+    # Profile completeness
+    if data.get('bio'):
+        transparency_score += 5
+    if data.get('profile_image'):
+        transparency_score += 3
+    if data.get('emails'):
+        transparency_score += 2
+    
+    # Social verification
+    transparency_score += min(10, social_platforms * 2)  # Max 10 points
+    
+    # Political affiliation transparency
+    political_affiliation = data.get('political_affiliation', {})
+    if political_affiliation and political_affiliation.get('affiliation') != 'unknown':
+        confidence = political_affiliation.get('confidence', 0)
+        if confidence >= 70:
+            transparency_score += 5  # Clear political stance = transparent
+        elif confidence >= 50:
+            transparency_score += 3
+    
+    transparency_score = min(25, transparency_score)  # Cap at 25
+    
+    # WORK FOOTPRINT (0-20 points)
+    # Volume + consistency of journalistic work
+    work_score = 0
+    
+    # Article volume
+    if total_articles >= 200:
+        work_score += 12
+    elif total_articles >= 100:
+        work_score += 10
+    elif total_articles >= 50:
+        work_score += 8
+    elif total_articles >= 20:
+        work_score += 6
+    elif total_articles >= 10:
+        work_score += 4
+    elif total_articles >= 5:
+        work_score += 2
+    
+    # Award recognition
+    work_score += min(8, len(awards) * 2)  # Max 8 points from awards
+    
+    work_score = min(20, work_score)  # Cap at 20
+    
+    # PUBLIC RESONANCE (0-10 points)
+    # Impact of their reporting
+    resonance_score = 0
+    
+    # Controversy can indicate high public attention (not necessarily bad)
+    if controversy_score >= 7:
+        resonance_score += 4  # High controversy = high attention
+    elif controversy_score >= 4:
+        resonance_score += 2
+    
+    # Awards indicate public/industry recognition
+    if len(awards) >= 5:
+        resonance_score += 6
+    elif len(awards) >= 3:
+        resonance_score += 4
+    elif len(awards) >= 1:
+        resonance_score += 2
+    
+    resonance_score = min(10, resonance_score)  # Cap at 10
+    
+    # CALCULATE FINAL HALO SCORE
+    total_halo_score = reach_score + engagement_score + transparency_score + work_score + resonance_score
+    
+    # Determine level
+    if total_halo_score >= 85:
+        level = "Exceptional"
+    elif total_halo_score >= 70:
+        level = "High"
+    elif total_halo_score >= 55:
+        level = "Good"
+    elif total_halo_score >= 40:
+        level = "Moderate"
+    else:
+        level = "Emerging"
+    
+    # Generate description
+    transparency_level = "High" if transparency_score >= 20 else "Medium" if transparency_score >= 15 else "Low"
+    reach_level = "Strong" if reach_score >= 20 else "Medium" if reach_score >= 15 else "Limited"
+    
+    bias_activity = "High" if controversy_score >= 6 else "Medium" if controversy_score >= 3 else "Low"
+    
+    description = f"{transparency_level} Transparency, {reach_level} Reach, {bias_activity} Bias Activity"
+    
+    return {
+        "score": total_halo_score,
+        "level": level,
+        "description": description,
+        "breakdown": {
+            "reach_index": reach_score,
+            "engagement_ratio": engagement_score,
+            "transparency_layer": transparency_score,
+            "work_footprint": work_score,
+            "public_resonance": resonance_score
+        },
+        "reasoning": f"Based on {total_articles} articles across {len(set(a.get('domain', '') for a in data.get('articles', [])))} domains, {social_platforms} social platforms, {len(awards)} awards, and {verification_rate}% verification rate."
     }
 
 # ============================================================================
@@ -248,83 +480,120 @@ def analyze_journalist(name: str, data: dict) -> Dict[str, Any]:
     # Build AI prompt
     prompt = f"""You are DataHalo — an advanced AI journalism intelligence and credibility analysis system.
 
-Your task: Generate a **comprehensive, factual, and deeply analytical profile** for journalist **{name}**.
+Your task: Generate a **comprehensive, factual, and deeply analytical profile** for journalist **{name}** with 99% accuracy in political affiliation, bias detection, and notable works identification.
 
-You MUST analyze:
+You MUST analyze with EXTREME PRECISION:
 1. Career trajectory and professional background
 2. Writing style, tone, and journalistic approach
-3. **Political/ideological leanings** - CRITICAL: Determine if the journalist leans LEFT (liberal, progressive, socialist, anti-establishment), RIGHT (conservative, nationalist, pro-government, traditionalist), CENTER (balanced, moderate), LIBERTARIAN (free speech absolutist, anti-authoritarian), or COMMUNIST/MARXIST based on their writings, affiliations, and coverage patterns
-4. Credibility indicators (awards, recognitions, controversies)
+3. **Political/ideological leanings** - CRITICAL: Determine with 99% accuracy if the journalist leans LEFT (liberal, progressive, socialist, anti-establishment), RIGHT (conservative, nationalist, pro-government, traditionalist), CENTER (balanced, moderate), LIBERTARIAN (free speech absolutist, anti-authoritarian), or COMMUNIST/MARXIST based on their writings, affiliations, and coverage patterns
+4. **Notable Works** - Identify the most significant articles, investigations, and reports with 99% accuracy
 5. Digital presence and audience engagement
 6. Ethical standards and integrity assessment
-7. Notable works and impact on journalism
+7. **Halo Score Components** - Influence, transparency, and engagement fingerprint
 
-**CRITICAL INSTRUCTIONS FOR POLITICAL BIAS DETECTION:**
-- Analyze article topics: Are they covering government critically or supportively?
-- Look for patterns: Pro-BJP/right-wing vs Pro-Congress/left-wing vs neutral
-- Check social media presence and who they engage with
-- Identify if they use charged language (e.g., "saffron", "secular", "nationalist")
-- Note any party affiliations, endorsements, or known political associations
-- Be SPECIFIC about bias - don't be vague. If they're left-leaning, say so clearly
-- If automated analysis detected political affiliation, incorporate that prominently
+**ENHANCED ACCURACY REQUIREMENTS:**
+- **Political Bias Detection (99% accuracy required):**
+  - Analyze article topics: Pro-government vs. anti-government coverage patterns
+  - Look for consistent patterns across 50+ articles analyzed
+  - Check social media presence and political figure interactions
+  - Identify charged political language usage patterns
+  - Note media outlet associations (known for left/right leanings)
+  - Cross-reference with known political party endorsements or criticisms
+  - Be EXTREMELY SPECIFIC about bias - provide concrete evidence
+
+- **Notable Works Identification (99% accuracy required):**
+  - Prioritize award-winning articles and investigations
+  - Include articles that sparked public debate or policy changes
+  - Focus on exclusive stories, breaking news, or investigative pieces
+  - Consider articles with high social media engagement or citations
+  - Include works that defined their career or reputation
+
+**HALO SCORE EXPLANATION:**
+The Halo Score measures the journalist's influence, transparency, and engagement fingerprint on the web.
+Not about whether they're right or wrong — it's about how visible, consistent, and accountable they are.
+
+ Reach Index: How widely their work appears (outlets, global vs regional reach)
+ Engagement Ratio: How people interact with their content (social mentions, retweets)
+ Transparency Layer: How clearly they disclose affiliations/biases (verified profiles, fact-checked bios)
+ Work Footprint: Volume + consistency of journalistic work (article count, frequency, expertise)
+ Public Resonance: Impact of their reporting (policy debates, public discussions)
 
 **REQUIRED JSON STRUCTURE:**
 {{
     "name": "{name}",
-    "biography": "Comprehensive 200-250 word factual summary integrating career highlights, focus areas, reputation, and public image. Include key milestones and evolution of their journalism career. MENTION their known political leanings if evident.",
+    "biography": "Comprehensive 250-300 word factual summary integrating career highlights, focus areas, reputation, and public image. Include key milestones and evolution of their journalism career. MENTION their known political leanings with 99% confidence if evident.",
     
     "careerHighlights": [
-        "Key career milestone 1 with specific details",
-        "Key career milestone 2 with specific details",
-        "Key career milestone 3 with specific details"
+        "Most significant career milestone with specific details and dates",
+        "Second most important achievement with concrete impact",
+        "Third major accomplishment with measurable outcomes"
     ],
     
     "mainTopics": [
-        "Primary beat/topic area 1",
-        "Primary beat/topic area 2",
-        "Primary beat/topic area 3"
+        "Primary beat/topic area with expertise depth",
+        "Secondary specialization area",
+        "Third area of coverage focus"
     ],
     
-    "writingTone": "Analytical / Neutral / Persuasive / Emotional / Investigative / Opinionated",
+    "writingTone": "Analytical / Neutral / Persuasive / Emotional / Investigative / Opinionated / Advocacy-driven",
     
-    "ideologicalBias": "Left-leaning / Right-leaning / Centrist / Libertarian / Progressive / Conservative / Socialist / Communist / Unclear - BE SPECIFIC. If evidence shows clear left or right bias, state it directly. Include nuances like 'Left-leaning with pro-labor focus' or 'Right-wing nationalist'",
+    "ideologicalBias": "EXTREMELY SPECIFIC - Left-leaning / Right-leaning / Centrist / Libertarian / Progressive / Conservative / Socialist / Communist / Anti-establishment / Pro-establishment. Include nuances like 'Left-leaning with strong anti-Modi stance' or 'Right-wing Hindu nationalist supporter'",
     
     "politicalAffiliation": {{
-        "primary": "BJP / Congress / AAP / Communist / Regional Party / Independent / None Detected",
-        "confidence": "High / Medium / Low",
-        "evidence": "Specific examples from their work showing affiliation or bias - cite article topics, social media, or affiliations"
+        "primary": "BJP / Congress / AAP / Communist / Regional Party / Independent / None Detected - BE 99% ACCURATE",
+        "confidence": "High / Medium / Low - Only use High if you have concrete evidence",
+        "evidence": "SPECIFIC examples from their work showing affiliation or bias - cite actual article topics, social media posts, or public statements. Must be factual and verifiable."
     }},
     
-    "credibilityScore": {{
-        "score": 75,
-        "reasoning": "Detailed 3-4 sentence justification with specific evidence from articles, controversies, and track record. Reference specific metrics."
+    "haloScore": {{
+        "score": {corpus_data['halo_score_result']['score']},
+        "level": "{corpus_data['halo_score_result']['level']}",
+        "description": "{corpus_data['halo_score_result']['description']}",
+        "breakdown": {json.dumps(corpus_data['halo_score_result']['breakdown'])},
+        "reasoning": "{corpus_data['halo_score_result']['reasoning']}"
     }},
     
     "notableWorks": [
         {{
-            "title": "Article/Investigation title",
+            "title": "Most significant article/investigation title - 99% accurate identification",
             "url": "Direct URL to work",
-            "impact": "Brief description of significance and impact",
-            "year": "Publication year if known"
+            "impact": "Specific description of significance and measurable impact",
+            "year": "Publication year if known",
+            "significance": "Why this work is considered notable (awards, public response, policy impact)"
+        }},
+        {{
+            "title": "Second most notable work",
+            "url": "Direct URL to work", 
+            "impact": "Concrete impact description",
+            "year": "Publication year",
+            "significance": "Specific reason for notability"
+        }},
+        {{
+            "title": "Third most significant work",
+            "url": "Direct URL to work",
+            "impact": "Measurable impact or recognition",
+            "year": "Publication year",
+            "significance": "Evidence of importance"
         }}
     ],
     
     "awards": [
-        "Award name and year if found in data, otherwise use 'Not found in available data'"
+        "Specific award name and year if found in data - be 99% accurate, otherwise use 'Not found in available data'"
     ],
     
     "controversies": [
         {{
-            "description": "Objective summary of controversy",
+            "description": "Objective, factual summary of controversy with specific details",
             "severity": "High / Medium / Low",
-            "source": "Where this information came from"
+            "source": "Where this information came from",
+            "year": "When the controversy occurred if known"
         }}
     ],
     
     "digitalPresence": {{
         "profileImage": "{corpus_data.get('profile_image', '')}",
         "verifiedLinks": {json.dumps(list(corpus_data.get('social_links', {}).values()))},
-        "mediaAffiliations": ["List of publications/organizations journalist is associated with based on article domains"],
+        "mediaAffiliations": ["List of publications/organizations journalist is associated with based on article domains - be 99% accurate"],
         "onlineReach": "Low / Moderate / High / Very High based on social presence and article count"
     }},
     
@@ -335,19 +604,19 @@ You MUST analyze:
         "trustworthiness": "Assessment based on domain trust scores and verification rate"
     }},
     
-    "ethicalAssessment": "Comprehensive 2-3 paragraph assessment discussing journalistic integrity, fact-checking practices, source transparency, bias management, accountability for errors, and overall ethical standards. Be specific and evidence-based. DISCUSS how their political bias (if any) affects their reporting objectivity.",
+    "ethicalAssessment": "Comprehensive 3-4 paragraph assessment discussing journalistic integrity, fact-checking practices, source transparency, bias management, accountability for errors, and overall ethical standards. Be specific and evidence-based. DISCUSS how their political bias (if any) affects their reporting objectivity. Include assessment of how their Halo Score reflects their professional accountability.",
     
     "articlesAnalyzed": {{
         "total": {corpus_data.get('total_articles', 0)},
         "verificationRate": "{corpus_data.get('verification_rate', 0)}%",
-        "topDomains": ["Extract top 3-5 publication domains from articles"],
+        "topDomains": ["Extract top 5-7 publication domains from articles - be 99% accurate"],
         "dateRange": "Earliest to latest publication dates found",
         "keyArticles": [
             {{
-                "title": "Most significant article title",
+                "title": "Most significant article title from analyzed set",
                 "url": "Article URL",
                 "date": "Publication date",
-                "significance": "Why this article matters"
+                "significance": "Why this article is important - be specific"
             }}
         ]
     }},
@@ -355,15 +624,15 @@ You MUST analyze:
     "toneAnalysis": {{
         "emotionalTone": "{corpus_data.get('tone_score', 0):.1f}/10",
         "bias": "{corpus_data.get('bias_label', 'unknown')}",
-        "objectivity": "Assessment of fact-based vs opinion-based writing",
+        "objectivity": "Assessment of fact-based vs opinion-based writing - be specific about percentage",
         "consistency": "Assessment of consistency in tone and approach across articles"
     }},
     
     "recommendationScore": {{
-        "overall": 75,
-        "reasoning": "Brief recommendation on credibility for readers: Should readers trust this journalist? Why or why not? MENTION their political leanings as a factor readers should be aware of.",
-        "strengths": ["Strength 1", "Strength 2", "Strength 3"],
-        "concerns": ["Concern 1 if any", "Concern 2 if any", "Political bias concerns if applicable"]
+        "overall": {corpus_data['halo_score_result']['score']},
+        "reasoning": "Brief recommendation on journalist reliability for readers: Should readers trust this journalist? Why or why not? MENTION their political leanings as a transparency factor readers should be aware of. Reference their Halo Score components.",
+        "strengths": ["Specific strength 1", "Specific strength 2", "Specific strength 3"],
+        "concerns": ["Specific concern 1 if any", "Specific concern 2 if any", "Political bias transparency concerns if applicable"]
     }}
 }}
 
@@ -374,17 +643,23 @@ SOURCE DATA FOR ANALYSIS:
 {corpus_data['text_corpus']}
 
 ===========================================
-ADDITIONAL METADATA:
+ENHANCED METADATA:
 ===========================================
 - Total Articles Analyzed: {corpus_data['total_articles']}
 - Verification Rate: {corpus_data['verification_rate']}%
 - Domain Trust Score: {corpus_data['domain_trust']}/10
 - Automated Bias Detection: {corpus_data['bias_label']}
 - Automated Political Affiliation: {corpus_data.get('political_affiliation', {}).get('affiliation', 'Unknown')} (Confidence: {corpus_data.get('political_affiliation', {}).get('confidence', 0)}%)
-- Automated Credibility Score: {corpus_data['credibility_score']}/10
+- Automated Halo Score: {corpus_data['halo_score_result']['score']}/100 ({corpus_data['halo_score_result']['level']})
 - Awards Found: {len(corpus_data.get('awards', []))}
 
-NOW GENERATE THE COMPLETE JSON ANALYSIS:
+**ACCURACY REQUIREMENTS:**
+- Political affiliation must be 99% accurate based on concrete evidence
+- Notable works must be the most significant and verifiable
+- All claims must be supported by data from the analyzed articles
+- No speculation or assumptions - only fact-based analysis
+
+NOW GENERATE THE COMPLETE JSON ANALYSIS WITH 99% ACCURACY:
 """
     
     # Call NVIDIA API
@@ -437,7 +712,7 @@ NOW GENERATE THE COMPLETE JSON ANALYSIS:
                 # Add default values for missing fields
                 for field in missing:
                     if field == 'credibilityScore':
-                        result[field] = {"score": corpus_data['credibility_score'] * 10, "reasoning": "Based on automated analysis"}
+                        result[field] = {"score": corpus_data['halo_score_result']['score'] * 10, "reasoning": "Based on automated analysis"}
                     elif field == 'digitalPresence':
                         result[field] = {
                             "profileImage": corpus_data.get('profile_image', ''),
@@ -457,7 +732,7 @@ NOW GENERATE THE COMPLETE JSON ANALYSIS:
                     "tone": corpus_data['tone_score'],
                     "bias": corpus_data['bias_label'],
                     "controversy": corpus_data['controversy_score'],
-                    "credibility": corpus_data['credibility_score']
+                    "credibility": corpus_data['halo_score_result']['score']
                 }
             }
             
