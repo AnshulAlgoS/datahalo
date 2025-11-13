@@ -10,3 +10,4 @@ lxml
 soupsieve
 twisted
 openai
+pymongo

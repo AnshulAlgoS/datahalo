@@ -4,7 +4,6 @@ import SideNav from "@/components/SideNav";
 import HeroSection from "@/components/HeroSection";
 import HowItWorks from "@/components/HowItWorks";
 import Features from "@/components/Features";
-import Dashboard from "@/components/Dashboard";
 import Impact from "@/components/Impact";
 import Revenue from "@/components/Revenue";
 import Contact from "@/components/Contact";
@@ -33,7 +32,6 @@ const Index = () => {
         <HeroSection />
         <HowItWorks />
         <Features />
-        <Dashboard />
         <JournalistAnalyzer />
         <Impact />
         <Revenue />
