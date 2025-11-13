@@ -1,8 +1,8 @@
 "use client";
 import React, { useState } from "react";
-import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { buildApiUrl, API_ENDPOINTS } from "../config/api";
 import {
   ChevronDown,
   ChevronUp,
@@ -130,15 +130,22 @@ export default function JournalistAnalyzer() {
     addLog(`🚀 Sending "${name}" to backend...`);
 
     try {
-      const response = await axios.post<AnalysisResponse>(
-        "http://localhost:8000/analyze",
-        { name: name.trim() },
-        { timeout: 90000, headers: { "Content-Type": "application/json" } }
-      );
-      addLog("✅ Analysis received.");
-      setAnalysis(response.data);
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.ANALYZE), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        setError(`Analysis failed: ${message}`);
+        addLog(`❌ Error: ${message}`);
+      } else {
+        const data = await response.json();
+        addLog("✅ Analysis received.");
+        setAnalysis(data);
+      }
     } catch (error: any) {
-      const message = error.response?.data?.detail || error.message;
+      const message = error.message;
       setError(`Analysis failed: ${message}`);
       addLog(`❌ Error: ${message}`);
     } finally {
@@ -147,11 +154,11 @@ export default function JournalistAnalyzer() {
   };
 
   const viewDetailedProfile = () => {
-    if (analysis && aiProfile) {
+    if (analysis && analysis.aiProfile) {
       // Store analysis data in sessionStorage
-      sessionStorage.setItem(`journalist_${aiProfile.name}`, JSON.stringify(analysis));
+      sessionStorage.setItem(`journalist_${analysis.aiProfile.name}`, JSON.stringify(analysis));
       // Navigate to profile page
-      navigate(`/profile/${encodeURIComponent(aiProfile.name)}`);
+      navigate(`/profile/${encodeURIComponent(analysis.aiProfile.name)}`);
     }
   };
 
@@ -225,7 +232,7 @@ export default function JournalistAnalyzer() {
               }}
             />
             <div className="flex-1 space-y-3">
-              <h2 className="text-3xl font-semibold text-primary font-orbitron border-b border-border pb-2">
+              <h2 className="text-3xl font-semibold text-primary border-b border-border pb-2">
                 {journalistName}
               </h2>
               <p className="text-muted-foreground leading-relaxed">

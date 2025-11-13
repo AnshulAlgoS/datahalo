@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildApiUrl, API_ENDPOINTS } from "../config/api";
 
 interface Article {
   title: string;
@@ -45,7 +46,8 @@ const News = () => {
     setError("");
     try {
       // Load articles from database (fast)
-      const res = await fetch(`http://127.0.0.1:8000/news?category=${category}`);
+      const url = buildApiUrl(API_ENDPOINTS.NEWS, { category });
+      const res = await fetch(url);
       const data = await res.json();
       
       if (data.status === "success") {
@@ -68,7 +70,8 @@ const News = () => {
     try {
       // Step 1: Fetch fresh news from API and save to database
       console.log(`🔄 Refreshing ${category} news...`);
-      const refreshRes = await fetch(`http://127.0.0.1:8000/refresh-news?category=${category}`);
+      const url = buildApiUrl(API_ENDPOINTS.REFRESH_NEWS, { category });
+      const refreshRes = await fetch(url);
       const refreshData = await refreshRes.json();
       
       if (refreshData.status === "success") {
@@ -96,10 +99,8 @@ const News = () => {
     setSmartFeed("");
     
     try {
-      const res = await fetch(
-        `http://127.0.0.1:8000/smart-feed?pov=${encodeURIComponent(perspective)}`,
-        { method: "POST" }
-      );
+      const url = buildApiUrl(API_ENDPOINTS.SMART_FEED, { pov: perspective });
+      const res = await fetch(url, { method: "POST" });
       const data = await res.json();
       
       if (data.status === "success") {
