@@ -629,7 +629,7 @@ Your task: Generate a **comprehensive, factual, and deeply analytical profile** 
     
     "digitalPresence": {{
         "profileImage": "{corpus_data.get('profile_image', '')}",
-        "verifiedLinks": {json.dumps([{{"platform": k, "url": v.get("url", "")}} for k, v in corpus_data.get('social_links', {}).items()])},
+        "verifiedLinks": {json.dumps([{"platform": k, "url": v.get("url", "")} for k, v in corpus_data.get('social_links', {}).items()])},
         "mediaAffiliations": ["Extract ONLY from article domains in SOURCE DATA - be precise"],
         "onlineReach": "Low / Moderate / High / Very High based on article count and social presence"
     }},

@@ -36,8 +36,17 @@ interface AnalysisData {
       confidence: string;
       evidence: string;
     };
-    credibilityScore: {
+    haloScore?: {
       score: number;
+      level: string;
+      description: string;
+      breakdown: {
+        reach_index: number;
+        engagement_ratio: number;
+        transparency_layer: number;
+        work_footprint: number;
+        public_resonance: number;
+      };
       reasoning: string;
     };
     notableWorks: Array<{
@@ -101,7 +110,7 @@ interface AnalysisData {
         tone: number;
         bias: string;
         controversy: number;
-        credibility: number;
+        halo_score: number;
       };
     };
   };
@@ -203,7 +212,6 @@ export default function JournalistProfile() {
   }
 
   const aiProfile = data.aiProfile;
-  const credScore = aiProfile.credibilityScore?.score || 0;
   const recScore = aiProfile.recommendationScore?.overall || 0;
 
   // Get score color
@@ -324,30 +332,11 @@ export default function JournalistProfile() {
 
         {/* Score Dashboard */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Credibility Score */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className={`p-6 rounded-xl bg-gradient-to-br ${getScoreBgColor(credScore)} border shadow-lg`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Target size={24} className="text-blue-500" />
-              <span className="text-xs font-semibold text-muted-foreground">CREDIBILITY</span>
-            </div>
-            <div className={`text-4xl font-bold ${getScoreColor(credScore)}`}>
-              {credScore}/100
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {credScore >= 75 ? "Highly Credible" : credScore >= 50 ? "Moderately Credible" : "Low Credibility"}
-            </p>
-          </motion.div>
-
           {/* Recommendation Score */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.1 }}
             className={`p-6 rounded-xl bg-gradient-to-br ${getScoreBgColor(recScore)} border shadow-lg`}
           >
             <div className="flex items-center justify-between mb-2">
@@ -366,7 +355,7 @@ export default function JournalistProfile() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.2 }}
             className="p-6 rounded-xl bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/30 shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
@@ -385,7 +374,7 @@ export default function JournalistProfile() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ delay: 0.3 }}
             className="p-6 rounded-xl bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/30 shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
@@ -507,18 +496,70 @@ export default function JournalistProfile() {
 
           {/* Right Column */}
           <div className="space-y-6">
-            {/* Credibility Assessment */}
+            {/* Halo Score Assessment */}
+            {aiProfile.haloScore && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-card/90 rounded-xl border border-border p-6 shadow-lg"
+              >
+                <h3 className="text-xl font-semibold text-primary mb-4 flex items-center gap-2">
+                  <Target size={20} />
+                  Halo Score - {aiProfile.haloScore.level}
+                </h3>
+                
+                {/* Score Display */}
+                <div className={`p-4 rounded-xl bg-gradient-to-br ${getScoreBgColor(aiProfile.haloScore.score)} border mb-4`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-muted-foreground">Overall Score</span>
+                    <span className={`text-3xl font-bold ${getScoreColor(aiProfile.haloScore.score)}`}>
+                      {aiProfile.haloScore.score}/100
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">{aiProfile.haloScore.description}</p>
+                </div>
+
+                {/* Breakdown */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Reach Index</span>
+                    <span className="font-semibold">{aiProfile.haloScore.breakdown.reach_index}/25</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Engagement Ratio</span>
+                    <span className="font-semibold">{aiProfile.haloScore.breakdown.engagement_ratio}/20</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Transparency Layer</span>
+                    <span className="font-semibold">{aiProfile.haloScore.breakdown.transparency_layer}/25</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Work Footprint</span>
+                    <span className="font-semibold">{aiProfile.haloScore.breakdown.work_footprint}/20</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Public Resonance</span>
+                    <span className="font-semibold">{aiProfile.haloScore.breakdown.public_resonance}/10</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">{aiProfile.haloScore.reasoning}</p>
+              </motion.div>
+            )}
+
+            {/* Recommendation Details */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
               className="bg-card/90 rounded-xl border border-border p-6 shadow-lg"
             >
               <h3 className="text-xl font-semibold text-primary mb-4 flex items-center gap-2">
                 <Target size={20} />
-                Credibility Assessment
+                Recommendation Analysis
               </h3>
               <p className="text-sm text-foreground mb-4">
-                {aiProfile.credibilityScore?.reasoning}
+                {aiProfile.recommendationScore?.reasoning}
               </p>
               
               {/* Strengths */}
@@ -795,9 +836,9 @@ export default function JournalistProfile() {
                 {aiProfile._metadata.verification_rate}%
               </div>
               <div>
-                <span className="font-semibold">Automated Scores:</span>
+                <span className="font-semibold">Halo Score:</span>
                 <br />
-                Tone: {aiProfile._metadata.automated_scores.tone}/10
+                {aiProfile._metadata.automated_scores.halo_score}/100
               </div>
             </div>
           </div>

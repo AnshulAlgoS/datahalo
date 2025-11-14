@@ -33,6 +33,7 @@ export const API_ENDPOINTS = {
   FETCH: '/fetch',
   HEALTH: '/health',
   SAVED_NEWS: '/saved-news',
+  ANALYZE_URL_NARRATIVE: '/analyze-url-narrative',
   ROOT: '/'
 } as const;
 

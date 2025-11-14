@@ -99,7 +99,7 @@ interface AnalysisResponse {
         tone: number;
         bias: string;
         controversy: number;
-        credibility: number;
+        halo_score: number;
       };
     };
   };

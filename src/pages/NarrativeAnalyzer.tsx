@@ -21,7 +21,10 @@ import {
   GraduationCap,
   Share2,
   Copy,
-  Check
+  Check,
+  Search,
+  Link,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,10 +77,12 @@ interface NarrativeAnalysis {
 
 const NarrativeAnalyzer = () => {
   const navigate = useNavigate();
+  const [mode, setMode] = useState<'topic' | 'url'>('topic');
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [topic, setTopic] = useState("");
+  const [url, setUrl] = useState("");
   const [timeframe, setTimeframe] = useState("30");
   const [analysis, setAnalysis] = useState<NarrativeAnalysis | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -96,8 +101,13 @@ const NarrativeAnalyzer = () => {
   ];
 
   const analyzeNarrative = async () => {
-    if (!topic.trim()) {
+    if (mode === 'topic' && !topic.trim()) {
       setError("Please enter a topic to analyze");
+      return;
+    }
+
+    if (mode === 'url' && !url.trim()) {
+      setError("Please enter a URL to analyze");
       return;
     }
 
@@ -106,15 +116,18 @@ const NarrativeAnalyzer = () => {
       setError("");
       setShowEducational(false);
       
-      const response = await fetch(`${API_URL}/analyze-narrative`, {
+      // Use different endpoints based on mode
+      const endpoint = mode === 'url' ? '/analyze-url-narrative' : '/analyze-narrative';
+      const requestBody = mode === 'url' 
+        ? { url: url }
+        : { topic: topic, days: parseInt(timeframe) };
+      
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          topic: topic,
-          days: parseInt(timeframe),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -128,7 +141,7 @@ const NarrativeAnalyzer = () => {
           setSuggestions(detail.suggestions);
         }
       } else {
-        setError(data.message || data.detail || "Failed to analyze narrative");
+        setError(data.message || data.detail || data.error || "Failed to analyze narrative");
       }
     } catch (err) {
       setError("Failed to connect to server. Please check your connection.");
@@ -154,7 +167,7 @@ const NarrativeAnalyzer = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `narrative-analysis-${topic.replace(/\s+/g, '-')}-${Date.now()}.json`;
+    a.download = `narrative-analysis-${analysis.topic.replace(/\s+/g, '-')}-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -327,7 +340,7 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
               {/* Info Banner */}
               <div className="mb-6 p-4 rounded-xl bg-primary/10 border border-primary/30">
                 <div className="flex items-start gap-3">
-                  <Target className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                  <Target className="w-5 h-5 text-primary mt-0.5" />
                   <div>
                     <h3 className="font-semibold text-primary mb-1">
                       Analyze Media Coverage Patterns
@@ -345,12 +358,12 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-2">
-                      Topic or Event
+                      {mode === 'topic' ? 'Topic or Event' : 'URL'}
                     </label>
                     <Input
-                      placeholder="e.g., Elections 2024, Farmer Protests..."
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
+                      placeholder={mode === 'topic' ? "e.g., Elections 2024, Farmer Protests..." : "e.g., https://example.com"}
+                      value={mode === 'topic' ? topic : url}
+                      onChange={(e) => mode === 'topic' ? setTopic(e.target.value) : setUrl(e.target.value)}
                       onKeyPress={(e) => e.key === "Enter" && analyzeNarrative()}
                       className="bg-card/50 backdrop-blur-sm border-border/50 focus:border-primary/50"
                     />
@@ -376,6 +389,26 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
                   </div>
                 </div>
 
+                {/* Mode Selection */}
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMode('topic')}
+                    className={`text-xs ${mode === 'topic' ? 'bg-primary/10 border-primary/30' : 'hover:bg-primary/10 hover:border-primary/50'}`}
+                  >
+                    Topic
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMode('url')}
+                    className={`text-xs ${mode === 'url' ? 'bg-primary/10 border-primary/30' : 'hover:bg-primary/10 hover:border-primary/50'}`}
+                  >
+                    URL
+                  </Button>
+                </div>
+
                 {/* Suggested Topics */}
                 <div>
                   <label className="block text-sm font-semibold mb-2">
@@ -387,7 +420,10 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
                         key={suggested}
                         variant="outline"
                         size="sm"
-                        onClick={() => setTopic(suggested)}
+                        onClick={() => {
+                          setTopic(suggested);
+                          setMode('topic');
+                        }}
                         className="text-xs hover:bg-primary/10 hover:border-primary/50"
                       >
                         {suggested}
@@ -399,7 +435,7 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
                 {/* Analyze Button */}
                 <Button
                   onClick={analyzeNarrative}
-                  disabled={analyzing || !topic.trim()}
+                  disabled={analyzing || (mode === 'topic' && !topic.trim()) || (mode === 'url' && !url.trim())}
                   className="w-full py-6 text-lg font-semibold bg-primary hover:bg-primary/90 rounded-xl"
                 >
                   {analyzing ? (
@@ -435,6 +471,7 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
                                 size="sm"
                                 onClick={() => {
                                   setTopic(suggestion);
+                                  setMode('topic');
                                   setError("");
                                   setSuggestions([]);
                                 }}
