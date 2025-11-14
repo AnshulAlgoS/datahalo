@@ -18,14 +18,6 @@ logger = logging.getLogger("ai_analysis")
 
 USER_AGENT = "DataHaloBot/1.0"
 
-# Import enhanced image fetcher
-try:
-    from utils.image_fetcher import fetch_profile_image, get_fallback_image
-    IMAGE_FETCHER_AVAILABLE = True
-except ImportError:
-    logger.warning("Image fetcher not available")
-    IMAGE_FETCHER_AVAILABLE = False
-
 # ============================================================================
 # NVIDIA CLIENT INITIALIZATION
 # ============================================================================
@@ -94,25 +86,7 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
     bio = primary_profile.get('bio', '') or ''
     
     # Extract profile image
-    if IMAGE_FETCHER_AVAILABLE and not primary_profile.get('profile_image', ''):
-        logger.info(f"Attempting to fetch better profile image for {name}")
-        social_links_list = []
-        for link in social_links:
-            if isinstance(link, dict):
-                social_links_list.append(link)
-        
-        better_image = fetch_profile_image(name, social_links_list)
-        if better_image:
-            profile_image = better_image
-            logger.info(f"✅ Found enhanced profile image for {name}")
-        else:
-            # Use fallback avatar
-            profile_image = get_fallback_image(name)
-            logger.info(f"Using fallback avatar for {name}")
-    elif IMAGE_FETCHER_AVAILABLE and primary_profile.get('profile_image', ''):
-        profile_image = primary_profile.get('profile_image', '')
-    else:
-        profile_image = primary_profile.get('profile_image', '') or ''
+    profile_image = primary_profile.get('profile_image', '') or ''
     
     # Extract contact information
     emails = primary_profile.get('emails', [])
@@ -455,6 +429,14 @@ def calculate_halo_score(name: str, data: dict) -> dict:
     
     description = f"{transparency_level} Transparency, {reach_level} Reach, {bias_activity} Bias Activity"
     
+    # Calculate unique domains safely
+    unique_domains = set()
+    if data.get('articles'):
+        for article in data['articles'][:30]:
+            domain = article.get('domain', '')
+            if domain and isinstance(domain, str):
+                unique_domains.add(domain)
+    
     return {
         "score": total_halo_score,
         "level": level,
@@ -466,7 +448,7 @@ def calculate_halo_score(name: str, data: dict) -> dict:
             "work_footprint": work_score,
             "public_resonance": resonance_score
         },
-        "reasoning": f"Based on {total_articles} articles across {len(set(a.get('domain', '') for a in data.get('articles', [])))} domains, {social_platforms} social platforms, {len(awards)} awards, and {verification_rate}% verification rate."
+        "reasoning": f"Based on {total_articles} articles across {len(unique_domains)} domains, {social_platforms} social platforms, {len(awards)} awards, and {verification_rate}% verification rate."
     }
 
 # ============================================================================
