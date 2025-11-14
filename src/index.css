@@ -8,6 +8,7 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
+    /* Dark Mode (Default) */
     --background: 220 30% 6%;
     --foreground: 0 0% 100%;
 
@@ -66,6 +67,66 @@ All colors MUST be HSL.
     /* Animations */
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  .light {
+    --background: 210 25% 96%; /* Softer blue-tinted off-white instead of pure white */
+    --foreground: 220 30% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 30% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 30% 10%;
+
+    --primary: 191 90% 45%; /* Slightly darker for better contrast in light mode */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 191 80% 90%; /* Soft cyan tint */
+    --secondary-foreground: 220 30% 10%;
+
+    --muted: 210 20% 92%; /* Light blue-gray */
+    --muted-foreground: 220 15% 40%;
+
+    --accent: 191 80% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 85%; /* Softer borders */
+    --input: 210 20% 88%;
+    --ring: 191 90% 45%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 210 25% 98%;
+    --sidebar-foreground: 220 30% 10%;
+    --sidebar-primary: 191 90% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 92%;
+    --sidebar-accent-foreground: 220 30% 10%;
+    --sidebar-border: 210 20% 85%;
+    --sidebar-ring: 191 90% 45%;
+
+    /* Custom DataHalo tokens - Light mode */
+    --glow-cyan: 191 90% 45%;
+    --glow-blue: 210 85% 55%;
+    --navy-dark: 210 25% 96%;
+    --navy-medium: 0 0% 100%;
+    --glass-bg: 210 20% 98%;
+    
+    /* Gradients - Softer for light mode */
+    --gradient-hero: linear-gradient(135deg, hsl(210 25% 96%), hsl(210 20% 98%), hsl(191 25% 98%));
+    --gradient-glow: radial-gradient(circle at center, hsl(191 90% 70% / 0.15), transparent 70%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100% / 0.9), hsl(210 20% 98% / 0.8));
+    
+    /* Shadows - Subtle for light mode */
+    --shadow-glow: 0 0 30px hsl(191 90% 50% / 0.15), 0 0 60px hsl(191 90% 50% / 0.08);
+    --shadow-card: 0 10px 40px hsl(210 20% 60% / 0.1);
+    
+    /* Animations */
+    --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
 
 @layer base {
@@ -75,5 +136,6 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }

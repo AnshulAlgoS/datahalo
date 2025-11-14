@@ -2,6 +2,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Users, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 import heroBg from "@/assets/hero-bg.jpeg";
 
 const HeroSection = () => {
@@ -10,6 +12,30 @@ const HeroSection = () => {
   const scrollToNext = () => {
     document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // Generate random values once for sparkles
+  const sparkleData = useMemo(() => 
+    Array.from({ length: 12 }, () => ({
+      leftOffset: (Math.random() - 0.5) * 100,
+      xStart: (Math.random() - 0.5) * 50,
+      xEnd: (Math.random() - 0.5) * 100,
+      duration: 2 + Math.random() * 1,
+      delay: Math.random() * 2,
+    })),
+    []
+  );
+
+  // Generate random values once for particles
+  const particleData = useMemo(() =>
+    Array.from({ length: 20 }, () => ({
+      left: 45 + Math.random() * 10,
+      top: 20 + Math.random() * 60,
+      blur: Math.random() * 1.5,
+      duration: 3 + Math.random() * 2,
+      delay: Math.random() * 2,
+    })),
+    []
+  );
 
   return (
     <section
@@ -21,93 +47,26 @@ const HeroSection = () => {
         className="absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage: `url(${heroBg})`,
-          filter: "brightness(0.45)",
+          opacity: 0.35,
         }}
       />
 
       {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/60 to-background/90" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/80 to-background/95" />
 
-      {/* ⚡ ENHANCED Lightning flash pulse - More dramatic */}
+      {/* 🗡️ CENTER BOTTOM-TO-TOP LIGHTNING SWORD - Main Feature */}
+      {/* Main sword beam */}
       <motion.div
-        className="absolute inset-0 bg-gradient-to-t from-[#00bfff15] via-[#00bfff35] to-transparent pointer-events-none"
-        animate={{
-          opacity: [0, 0.3, 0, 0.6, 0, 0.9, 0],
-          filter: [
-            "brightness(1)",
-            "brightness(1.4)",
-            "brightness(1)",
-            "brightness(1.6)",
-            "brightness(1)",
-            "brightness(2)",
-            "brightness(1)",
-          ],
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[4px] h-full origin-bottom"
+        style={{
+          background: "linear-gradient(to top, hsl(191 100% 60%) 0%, hsl(191 100% 55%) 20%, hsl(210 100% 60%) 50%, hsl(210 90% 55%) 80%, transparent 100%)",
+          boxShadow: "0 0 30px hsl(191 100% 60%), 0 0 60px hsl(191 100% 50% / 0.6), 0 0 90px hsl(191 100% 50% / 0.3)",
+          filter: "brightness(1.5)",
         }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          repeatType: "mirror",
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* ⚡ Intense bottom glow base for sword */}
-      <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[120px] h-[120px] bg-[#00bfff] rounded-full blur-[40px]"
+        className="opacity-70 dark:opacity-100"
         animate={{
+          scaleY: [0.85, 1, 0.85],
           opacity: [0.6, 1, 0.6],
-          scale: [0.9, 1.2, 0.9],
-          boxShadow: [
-            "0 0 40px #00bfff",
-            "0 0 80px #00bfff",
-            "0 0 40px #00bfff",
-          ],
-        }}
-        transition={{
-          duration: 2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* 🌌 CORE Lightning beam - Brighter and sharper */}
-      <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[6px] h-full bg-gradient-to-t from-[#ffffff] via-[#00bfff] to-transparent"
-        animate={{
-          opacity: [0.7, 1, 0.7],
-          scaleY: [1, 1.1, 1],
-          filter: [
-            "drop-shadow(0 0 8px #00bfff)",
-            "drop-shadow(0 0 16px #00bfff)",
-            "drop-shadow(0 0 8px #00bfff)",
-          ],
-        }}
-        transition={{
-          duration: 2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* Lightning sword outer glow - Wide spread */}
-      <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[16px] h-full bg-gradient-to-t from-[#00bfff95] via-[#00bfff50] to-transparent blur-[12px]"
-        animate={{
-          opacity: [0.5, 0.9, 0.5],
-          scaleX: [1, 1.2, 1],
-        }}
-        transition={{
-          duration: 2.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* Additional intense glow layer */}
-      <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[24px] h-full bg-gradient-to-t from-[#00bfff80] via-[#00bfff30] to-transparent blur-[20px]"
-        animate={{
-          opacity: [0.4, 0.8, 0.4],
         }}
         transition={{
           duration: 3,
@@ -116,109 +75,310 @@ const HeroSection = () => {
         }}
       />
 
-      {/* ⚡ RAPID Moving energy - Primary strike */}
+      {/* Outer glow layer */}
       <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[16px] h-[250px] bg-gradient-to-t from-[#ffffff] via-[#00bfff] to-transparent blur-[6px] rounded-full"
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[60px] h-full origin-bottom"
+        style={{
+          background: "linear-gradient(to top, hsl(191 100% 60% / 0.4) 0%, hsl(191 100% 55% / 0.3) 20%, hsl(210 95% 60% / 0.2) 50%, hsl(210 90% 55% / 0.15) 70%, transparent 100%)",
+          filter: "blur(30px)",
+        }}
+        className="opacity-50 dark:opacity-80"
         animate={{
-          y: ["0%", "-400%"],
-          opacity: [1, 0.9, 0.6, 0.2, 0],
-          scaleX: [1.2, 1, 0.8, 0.5, 0.3],
+          scaleY: [0.9, 1.05, 0.9],
+          opacity: [0.4, 0.8, 0.4],
+        }}
+        transition={{
+          duration: 3.5,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Wide atmospheric glow */}
+      <motion.div
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[150px] h-full origin-bottom"
+        style={{
+          background: "linear-gradient(to top, hsl(191 100% 60% / 0.3) 0%, hsl(191 95% 55% / 0.2) 25%, hsl(210 90% 60% / 0.15) 50%, transparent 75%)",
+          filter: "blur(60px)",
+        }}
+        className="opacity-40 dark:opacity-70"
+        animate={{
+          scaleY: [0.95, 1.1, 0.95],
+          scaleX: [1, 1.2, 1],
+          opacity: [0.3, 0.7, 0.3],
+        }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Energy pulses traveling upward */}
+      {[...Array(5)].map((_, i) => (
+        <motion.div
+          key={`pulse-${i}`}
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[8px] h-[80px] rounded-full opacity-60 dark:opacity-100"
+          style={{
+            background: "linear-gradient(to top, hsl(191 100% 70%) 0%, hsl(191 100% 60%) 50%, transparent 100%)",
+            boxShadow: "0 0 20px hsl(191 100% 60% / 0.8)",
+            filter: "blur(4px)",
+          }}
+          animate={{
+            y: [0, -800],
+            opacity: [0, 1, 1, 0],
+            scaleY: [0.5, 1, 1, 0.5],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeOut",
+            delay: i * 0.6,
+          }}
+        />
+      ))}
+
+      {/* Bottom impact glow - where sword emerges */}
+      <motion.div
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[300px] h-[150px]"
+        style={{
+          background: "radial-gradient(ellipse at center, hsl(191 100% 65% / 0.6) 0%, hsl(191 100% 60% / 0.4) 30%, hsl(210 95% 60% / 0.2) 60%, transparent 100%)",
+          filter: "blur(50px)",
+        }}
+        className="opacity-50 dark:opacity-90"
+        animate={{
+          opacity: [0.4, 0.9, 0.4],
+          scale: [0.95, 1.15, 0.95],
+        }}
+        transition={{
+          duration: 2.5,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Sparkles around the sword */}
+      {sparkleData.map((data, i) => (
+        <motion.div
+          key={`sparkle-${i}`}
+          className="absolute bottom-[20%] left-1/2 w-[3px] h-[3px] rounded-full opacity-70 dark:opacity-100"
+          style={{
+            left: `calc(50% + ${data.leftOffset}px)`,
+            background: i % 2 === 0 ? "hsl(191 100% 70%)" : "hsl(210 100% 70%)",
+            boxShadow: "0 0 10px currentColor, 0 0 20px currentColor",
+          }}
+          animate={{
+            y: [-50, -200],
+            x: [data.xStart, data.xEnd],
+            opacity: [0, 1, 0],
+            scale: [0, 1.5, 0],
+          }}
+          transition={{
+            duration: data.duration,
+            repeat: Infinity,
+            ease: "easeOut",
+            delay: data.delay,
+          }}
+        />
+      ))}
+
+      {/* ⚡ Ambient cyan/blue atmosphere */}
+      <motion.div
+        className="absolute inset-0 opacity-[0.15] dark:opacity-[0.3]"
+        style={{
+          background: "radial-gradient(circle at 50% 50%, hsl(191 100% 60% / 0.3) 0%, transparent 60%)",
+          filter: "blur(80px)",
+        }}
+        animate={{
+          opacity: [0.15, 0.25, 0.15],
+          scale: [1, 1.05, 1],
+        }}
+        transition={{
+          duration: 6,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Main light beam - Cyan/Blue */}
+      <motion.div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] md:w-[500px] h-[600px]"
+        style={{
+          background: "linear-gradient(180deg, hsl(191 100% 60% / 0.2) 0%, hsl(210 90% 60% / 0.15) 40%, transparent 100%)",
+          filter: "blur(60px)",
+        }}
+        animate={{
+          opacity: [0.2, 0.35, 0.2],
+          scaleY: [1, 1.1, 1],
+        }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Inner core beam */}
+      <motion.div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[150px] md:w-[250px] h-[500px]"
+        style={{
+          background: "linear-gradient(180deg, hsl(191 100% 55% / 0.25) 0%, hsl(210 95% 60% / 0.15) 50%, transparent 100%)",
+          filter: "blur(40px)",
+        }}
+        animate={{
+          opacity: [0.25, 0.4, 0.25],
+        }}
+        transition={{
+          duration: 3,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+      />
+
+      {/* Core line */}
+      <motion.div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[2px] h-[400px] opacity-30 dark:opacity-50"
+        style={{
+          background: "linear-gradient(180deg, hsl(191 100% 60%) 0%, hsl(210 100% 60%) 50%, transparent 100%)",
+          boxShadow: "0 0 20px hsl(191 100% 60% / 0.4), 0 0 40px hsl(191 100% 60% / 0.2)",
+        }}
+        animate={{
+          opacity: [0.3, 0.5, 0.3],
         }}
         transition={{
           duration: 2,
           repeat: Infinity,
-          ease: "easeOut",
+          ease: "easeInOut",
         }}
       />
 
-      {/* ⚡ Secondary strike - Delayed for effect */}
+      {/* Atmospheric glows - Cyan */}
+      {[...Array(3)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[400px] md:w-[600px] h-[400px] opacity-10 dark:opacity-20"
+          style={{
+            background: `radial-gradient(ellipse at center, hsl(191 100% 55% / ${0.15 - i * 0.05}) 0%, transparent 70%)`,
+            filter: "blur(60px)",
+          }}
+          animate={{
+            opacity: [0.1, 0.2, 0.1],
+            scale: [1, 1.15, 1],
+          }}
+          transition={{
+            duration: 5 + i,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.5,
+          }}
+        />
+      ))}
+
+      {/* Ground impact glow - Cyan */}
       <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[14px] h-[220px] bg-gradient-to-t from-[#ffffff] via-[#00d4ff] to-transparent blur-[5px]"
+        className="absolute top-[50%] left-1/2 -translate-x-1/2 w-[500px] md:w-[800px] h-[200px] opacity-15 dark:opacity-30"
+        style={{
+          background: "radial-gradient(ellipse at center, hsl(191 100% 60% / 0.3) 0%, hsl(210 90% 60% / 0.15) 40%, transparent 70%)",
+          filter: "blur(80px)",
+        }}
         animate={{
-          y: ["0%", "-420%"],
-          opacity: [0.95, 0.7, 0.4, 0],
-          scaleX: [1.1, 0.9, 0.6, 0.4],
+          opacity: [0.15, 0.3, 0.15],
+          scaleX: [1, 1.1, 1],
         }}
         transition={{
-          duration: 2,
+          duration: 4,
           repeat: Infinity,
-          ease: "easeOut",
-          delay: 0.4,
+          ease: "easeInOut",
         }}
       />
 
-      {/* ⚡ Tertiary strike - More variation */}
+      {/* Bottom ring glow */}
       <motion.div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[12px] h-[200px] bg-gradient-to-t from-[#00e5ff] via-[#00bfff70] to-transparent blur-[7px]"
+        className="absolute top-[60%] left-1/2 -translate-x-1/2 w-[600px] md:w-[1000px] h-[100px] opacity-20 dark:opacity-35"
+        style={{
+          background: "radial-gradient(ellipse at center, hsl(191 100% 55% / 0.4) 0%, hsl(210 90% 60% / 0.2) 30%, transparent 70%)",
+          filter: "blur(50px)",
+        }}
         animate={{
-          y: ["0%", "-380%"],
-          opacity: [0.9, 0.6, 0.3, 0],
-          scaleX: [1, 0.7, 0.5, 0.3],
+          opacity: [0.2, 0.35, 0.2],
+          scaleX: [1, 1.15, 1],
         }}
         transition={{
-          duration: 2,
+          duration: 3.5,
           repeat: Infinity,
-          ease: "easeOut",
-          delay: 0.8,
+          ease: "easeInOut",
         }}
       />
 
-      {/* Electric sparks effect */}
+      {/* Light rays - Cyan */}
+      {[...Array(8)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute top-0 left-1/2 origin-top opacity-5 dark:opacity-15"
+          style={{
+            width: "2px",
+            height: "500px",
+            background: `linear-gradient(180deg, hsl(191 100% 60% / 0.3) 0%, transparent 100%)`,
+            transform: `translateX(-50%) rotate(${i * 45}deg)`,
+            filter: "blur(2px)",
+          }}
+          animate={{
+            opacity: [0.05, 0.15, 0.05],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.2,
+          }}
+        />
+      ))}
+
+      {/* Pulse effect - Cyan */}
       <motion.div
-        className="absolute bottom-20 left-1/2 -translate-x-1/2 w-[30px] h-[30px] bg-[#00bfff] rounded-full blur-[8px]"
+        className="absolute top-[40%] left-1/2 -translate-x-1/2 w-[100px] h-[100px] opacity-0"
+        style={{
+          background: "radial-gradient(circle, hsl(191 100% 60% / 0.4) 0%, transparent 70%)",
+          filter: "blur(40px)",
+        }}
         animate={{
-          y: [0, -100, -200, -300],
-          x: [0, 10, -10, 0],
-          opacity: [0.8, 0.6, 0.3, 0],
-          scale: [1, 0.8, 0.5, 0.2],
+          opacity: [0, 0.25, 0],
+          scale: [0.5, 2, 0.5],
         }}
         transition={{
-          duration: 1.8,
+          duration: 4,
           repeat: Infinity,
           ease: "easeOut",
         }}
       />
 
-      {/* Electric sparks effect - opposite side */}
-      <motion.div
-        className="absolute bottom-20 left-1/2 -translate-x-1/2 w-[25px] h-[25px] bg-[#00d4ff] rounded-full blur-[6px]"
-        animate={{
-          y: [0, -120, -240, -360],
-          x: [0, -15, 15, 0],
-          opacity: [0.7, 0.5, 0.2, 0],
-          scale: [0.9, 0.7, 0.4, 0.1],
-        }}
-        transition={{
-          duration: 1.8,
-          repeat: Infinity,
-          ease: "easeOut",
-          delay: 0.5,
-        }}
-      />
-
-      {/* ⚡ Lightning flicker effect */}
-      <motion.div
-        className="absolute inset-0 bg-gradient-to-b from-transparent via-[#00bfff20] to-transparent pointer-events-none"
-        animate={{
-          opacity: [0, 0.8, 0, 0.6, 0, 1, 0],
-        }}
-        transition={{
-          duration: 0.3,
-          repeat: Infinity,
-          repeatDelay: 3,
-          ease: "linear",
-        }}
-      />
-
-      {/* Enhanced center glow */}
-      <motion.div
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.4, 0.7, 0.4],
-        }}
-        transition={{ duration: 3, repeat: Infinity }}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[32rem] h-[32rem] bg-primary/30 rounded-full blur-[100px]"
-      />
+      {/* Additional atmospheric particles - Cyan/Blue */}
+      {particleData.map((data, i) => (
+        <motion.div
+          key={`particle-${i}`}
+          className="absolute w-1 h-1 rounded-full opacity-30 dark:opacity-60"
+          style={{
+            left: `${data.left}%`,
+            top: `${data.top}%`,
+            background: i % 2 === 0 
+              ? "hsl(191 100% 60%)" 
+              : "hsl(210 90% 60%)",
+            boxShadow: "0 0 10px currentColor",
+            filter: `blur(${data.blur}px) brightness(1.3)`,
+          }}
+          animate={{
+            y: [0, -100, 0],
+            opacity: [0.3, 0.6, 0.3],
+            scale: [1, 1.5, 1],
+          }}
+          transition={{
+            duration: data.duration,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: data.delay,
+          }}
+        />
+      ))}
 
       {/* Content */}
       <div className="relative z-10 px-6 max-w-5xl">
@@ -268,6 +428,7 @@ const HeroSection = () => {
         transition={{ duration: 0.6, delay: 0.3 }}
         className="absolute top-6 right-6 z-20 flex gap-3"
       >
+        <ThemeToggle />
         <Button
           onClick={() => navigate("/narrative-analyzer")}
           className="group relative px-6 py-3 bg-card/50 backdrop-blur-md border border-border/50 hover:border-primary/50 text-foreground hover:text-primary rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(0,200,255,0.4)]"
