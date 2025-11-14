@@ -18,6 +18,14 @@ logger = logging.getLogger("ai_analysis")
 
 USER_AGENT = "DataHaloBot/1.0"
 
+# Import enhanced image fetcher
+try:
+    from utils.image_fetcher import fetch_profile_image, get_fallback_image
+    IMAGE_FETCHER_AVAILABLE = True
+except ImportError:
+    logger.warning("Image fetcher not available")
+    IMAGE_FETCHER_AVAILABLE = False
+
 # ============================================================================
 # NVIDIA CLIENT INITIALIZATION
 # ============================================================================
@@ -86,7 +94,25 @@ def _prepare_analysis_corpus(name: str, data: dict) -> Dict[str, Any]:
     bio = primary_profile.get('bio', '') or ''
     
     # Extract profile image
-    profile_image = primary_profile.get('profile_image', '') or ''
+    if IMAGE_FETCHER_AVAILABLE and not primary_profile.get('profile_image', ''):
+        logger.info(f"Attempting to fetch better profile image for {name}")
+        social_links_list = []
+        for link in social_links:
+            if isinstance(link, dict):
+                social_links_list.append(link)
+        
+        better_image = fetch_profile_image(name, social_links_list)
+        if better_image:
+            profile_image = better_image
+            logger.info(f"✅ Found enhanced profile image for {name}")
+        else:
+            # Use fallback avatar
+            profile_image = get_fallback_image(name)
+            logger.info(f"Using fallback avatar for {name}")
+    elif IMAGE_FETCHER_AVAILABLE and primary_profile.get('profile_image', ''):
+        profile_image = primary_profile.get('profile_image', '')
+    else:
+        profile_image = primary_profile.get('profile_image', '') or ''
     
     # Extract contact information
     emails = primary_profile.get('emails', [])
@@ -480,114 +506,98 @@ def analyze_journalist(name: str, data: dict) -> Dict[str, Any]:
     # Build AI prompt
     prompt = f"""You are DataHalo — an advanced AI journalism intelligence and transparency analysis system.
 
-Your task: Generate a **comprehensive, factual, and deeply analytical profile** for journalist **{name}** with 99% accuracy in political affiliation, bias detection, and notable works identification.
+Your task: Generate a **comprehensive, factual, and deeply analytical profile** for journalist **{name}** with MAXIMUM accuracy in political affiliation detection.
 
-**CRITICAL: POLITICAL AFFILIATION DETECTION - AVOID FALSE DEFAULTS**
-DO NOT default to "Congress" or any single party unless you have CONCRETE EVIDENCE from the articles analyzed.
-BE EXTREMELY CAREFUL and ANALYTICAL. If unsure, use "Independent" or "None Detected" rather than guessing.
+**CRITICAL INSTRUCTIONS FOR POLITICAL AFFILIATION (99% ACCURACY REQUIRED):**
 
-**MANDATORY POLITICAL BIAS ANALYSIS STEPS:**
-1. **Article Content Analysis** (Primary Evidence):
-   - Count pro-BJP vs anti-BJP articles in the analyzed set
-   - Count pro-Congress vs anti-Congress articles  
-   - Look for criticism patterns: Who do they criticize more?
-   - Look for defense patterns: Who do they defend more?
-   - Analyze coverage of government policies: Supportive or critical?
+⚠️ **NEVER DEFAULT TO ANY PARTY WITHOUT CONCRETE EVIDENCE**
+⚠️ **DO NOT GUESS - IF UNCERTAIN, USE "Independent" or "Insufficient Data"**
 
-2. **Media Outlet Analysis** (Secondary Evidence):
-   - Right-leaning outlets: OpIndia, Swarajya, Republic TV, Times Now Navbharat
-   - Left-leaning outlets: The Wire, Scroll.in, Newslaundry, The Quint, NDTV
-   - Centrist outlets: The Hindu, Indian Express, Hindustan Times
-   - What publications does this journalist write for? This reveals their editorial alignment
+**STEP-BY-STEP POLITICAL BIAS DETECTION PROCESS:**
 
-3. **Language Pattern Analysis** (Tertiary Evidence):
-   - Pro-BJP/Right language: "nationalist", "patriotic", "development", "strong leadership"
-   - Anti-BJP/Left language: "authoritarian", "hindutva", "secular threat", "fascist"
-   - Pro-Congress/Left language: "inclusive", "secular", "minority rights", "liberal values"
-   - Neutral language: factual reporting without charged terms
+1. **COUNT ARTICLE PATTERNS (Primary Evidence):**
+   From the {corpus_data['total_articles']} articles analyzed below, count:
+   - How many articles CRITICIZE BJP/Modi government vs SUPPORT them?
+   - How many articles CRITICIZE Congress vs SUPPORT them?
+   - How many articles CRITICIZE AAP/other parties vs SUPPORT them?
+   
+   **CRITICAL MATH:**
+   - If 70%+ articles criticize one party consistently → Anti-[Party]
+   - If 70%+ articles support one party consistently → Pro-[Party]
+   - If criticism is balanced across all parties → Independent
+   - If less than 10 articles → Mark as "Insufficient Data"
 
-4. **Topic Focus Analysis**:
-   - BJP supporters focus on: Development, nationalism, Hindu issues, foreign policy wins
-   - BJP critics focus on: Communalism, press freedom, minority rights, unemployment
-   - Congress supporters focus on: Gandhis, secularism, welfare schemes, BJP failures
-   - Independent journalists: Balanced coverage of all parties and issues
+2. **PUBLICATION ANALYSIS (Secondary Evidence):**
+   Look at the domains in "topDomains" below:
+   
+   **Right-Leaning Outlets:** OpIndia, Swarajya, Republic TV, Times Now, India Today (sometimes), Zee News
+   - If 70%+ articles from these → Likely "Right-leaning" or "Pro-BJP"
+   
+   **Left-Leaning Outlets:** The Wire, Scroll.in, Newslaundry, The Quint, NDTV, Caravan, Outlook
+   - If 70%+ articles from these → Likely "Left-leaning" or "Anti-BJP"
+   
+   **Neutral Outlets:** The Hindu, Indian Express, Hindustan Times, Live Mint, Business Standard
+   - If most articles from these → Likely "Centrist" or "Independent"
 
-**POLITICAL AFFILIATION DECISION TREE:**
-- If 70%+ articles criticize BJP/Modi government → Mark as "Anti-BJP/Left-leaning"
-- If 70%+ articles support BJP/Modi government → Mark as "Pro-BJP/Right-leaning"  
-- If 70%+ articles support Congress party → Mark as "Pro-Congress"
-- If balanced criticism and praise for all parties → Mark as "Independent/Centrist"
-- If primarily writes for right-wing outlets → Mark as "Right-leaning"
-- If primarily writes for left-wing outlets → Mark as "Left-leaning"
-- If insufficient evidence → Mark as "None Detected" with Low confidence
+3. **LANGUAGE PATTERN ANALYSIS:**
+   Look for these linguistic markers in article titles/snippets:
+   
+   **Pro-BJP Language:** "development", "progress", "strong leader", "nationalist", "patriotic"
+   **Anti-BJP Language:** "authoritarian", "fascist", "hindutva", "communal", "press freedom"
+   **Pro-Congress Language:** "secular", "inclusive", "Gandhi legacy", "liberal values"
+   **Neutral Language:** Factual reporting without charged political terms
 
-**DO NOT:**
-- Assume Congress affiliation without clear evidence
-- Confuse anti-BJP with pro-Congress (they are different)
-- Mark as "Left-leaning" if they're just critical of government
-- Ignore the media outlets they write for
+4. **AUTOMATED SCORES CROSS-CHECK:**
+   The automated analysis detected:
+   - Bias Label: {corpus_data['bias_label']}
+   - Political Affiliation: {corpus_data.get('political_affiliation', {}).get('affiliation', 'Unknown')}
+   - Confidence: {corpus_data.get('political_affiliation', {}).get('confidence', 0)}%
+   
+   **USE THIS AS A HINT ONLY - VERIFY WITH ARTICLE EVIDENCE**
 
-You MUST analyze with EXTREME PRECISION:
-1. Career trajectory and professional background
-2. Writing style, tone, and journalistic approach
-3. **Political/ideological leanings** - CRITICAL: Determine with 99% accuracy if the journalist leans LEFT (liberal, progressive, socialist, anti-establishment), RIGHT (conservative, nationalist, pro-government, traditionalist), CENTER (balanced, moderate), LIBERTARIAN (free speech absolutist, anti-authoritarian), or COMMUNIST/MARXIST based on their writings, affiliations, and coverage patterns
-4. **Notable Works** - Identify the most significant articles, investigations, and reports with 99% accuracy
-5. Digital presence and audience engagement
-6. Ethical standards and integrity assessment
-7. **Halo Score Components** - Influence, transparency, and engagement fingerprint
+5. **FINAL DECISION MATRIX:**
 
-**ENHANCED ACCURACY REQUIREMENTS:**
-- **Political Bias Detection (99% accuracy required):**
-  - Analyze article topics: Pro-government vs. anti-government coverage patterns
-  - Look for consistent patterns across 50+ articles analyzed
-  - Check social media presence and political figure interactions
-  - Identify charged political language usage patterns
-  - Note media outlet associations (known for left/right leanings)
-  - Cross-reference with known political party endorsements or criticisms
-  - Be EXTREMELY SPECIFIC about bias - provide concrete evidence
+   | Evidence | Classification | Confidence |
+   |----------|---------------|------------|
+   | 70%+ pro-BJP articles + right-wing outlets | "Pro-BJP/Right-leaning" | High |
+   | 70%+ anti-BJP articles + left-wing outlets | "Anti-BJP/Left-leaning" | High |
+   | 70%+ pro-Congress articles | "Pro-Congress" | High |
+   | Balanced criticism of all parties + neutral outlets | "Independent/Centrist" | High |
+   | Mixed signals, no clear pattern | "Independent" | Medium |
+   | Less than 10 articles analyzed | "Insufficient Data" | Low |
+   | Cannot determine from evidence | "None Detected" | Low |
 
-- **Notable Works Identification (99% accuracy required):**
-  - Prioritize award-winning articles and investigations
-  - Include articles that sparked public debate or policy changes
-  - Focus on exclusive stories, breaking news, or investigative pieces
-  - Consider articles with high social media engagement or citations
-  - Include works that defined their career or reputation
-
-**HALO SCORE EXPLANATION:**
-The Halo Score measures the journalist's influence, transparency, and engagement fingerprint on the web.
-Not about whether they're right or wrong — it's about how visible, consistent, and accountable they are.
-
- Reach Index: How widely their work appears (outlets, global vs regional reach)
- Engagement Ratio: How people interact with their content (social mentions, retweets)
- Transparency Layer: How clearly they disclose affiliations/biases (verified profiles, fact-checked bios)
- Work Footprint: Volume + consistency of journalistic work (article count, frequency, expertise)
- Public Resonance: Impact of their reporting (policy debates, public discussions)
+**FORBIDDEN DEFAULTS:**
+❌ DO NOT default to "Congress" without evidence
+❌ DO NOT assume "Left-leaning" just because they criticize government
+❌ DO NOT confuse "Anti-BJP" with "Pro-Congress" (they are different!)
+❌ DO NOT ignore the media outlets they write for
 
 **REQUIRED JSON STRUCTURE:**
 {{
     "name": "{name}",
-    "biography": "Comprehensive 250-300 word factual summary integrating career highlights, focus areas, reputation, and public image. Include key milestones and evolution of their journalism career. MENTION their known political leanings with 99% confidence if evident.",
+    "biography": "Comprehensive 250-300 word factual summary. MUST mention their political leanings ONLY if clearly evident from analyzed articles. Do NOT speculate.",
     
     "careerHighlights": [
-        "Most significant career milestone with specific details and dates",
-        "Second most important achievement with concrete impact",
-        "Third major accomplishment with measurable outcomes"
+        "Most significant career milestone with specific details",
+        "Second major achievement",
+        "Third accomplishment"
     ],
     
     "mainTopics": [
-        "Primary beat/topic area with expertise depth",
-        "Secondary specialization area",
-        "Third area of coverage focus"
+        "Primary coverage area based on article analysis",
+        "Secondary topic focus",
+        "Third area"
     ],
     
-    "writingTone": "Analytical / Neutral / Persuasive / Emotional / Investigative / Opinionated / Advocacy-driven",
+    "writingTone": "Based on article analysis: Analytical / Neutral / Persuasive / Investigative / Advocacy-driven",
     
-    "ideologicalBias": "EXTREMELY SPECIFIC - Choose from: 'Anti-BJP/Left-leaning' / 'Pro-BJP/Right-leaning' / 'Pro-Congress' / 'Independent/Centrist' / 'Left-wing Progressive' / 'Right-wing Nationalist' / 'Libertarian' / 'None Detected'. Include nuances like 'Anti-establishment critic of all parties' or 'Pro-government regardless of party'",
+    "ideologicalBias": "EVIDENCE-BASED ONLY. Choose ONE from: 'Anti-BJP/Left-leaning' / 'Pro-BJP/Right-leaning' / 'Pro-Congress' / 'Independent/Centrist' / 'Insufficient Data' / 'None Detected'. Include specific nuance if detected.",
     
     "politicalAffiliation": {{
-        "primary": "EVIDENCE-BASED ONLY: 'Anti-BJP' / 'Pro-BJP' / 'Pro-Congress' / 'Independent' / 'Left-wing' / 'Right-wing' / 'Centrist' / 'None Detected' - NEVER guess without evidence from analyzed articles",
-        "confidence": "High ONLY if 70%+ articles show clear pattern / Medium if 50-70% / Low if less than 50% or mixed signals",
-        "evidence": "MANDATORY: List 3-5 specific examples from the ACTUAL ANALYZED ARTICLES showing their bias. Example: 'Article titled X criticized Modi government's Y policy', 'Article on Z defended BJP's stance on...' DO NOT make up evidence. Use ONLY what you see in the SOURCE DATA."
+        "primary": "MUST match evidence from articles. Options: 'Anti-BJP' / 'Pro-BJP' / 'Pro-Congress' / 'Anti-Congress' / 'Independent' / 'Centrist' / 'Insufficient Data' / 'None Detected'. NEVER guess.",
+        "confidence": "High (70%+ articles show pattern) / Medium (50-70%) / Low (<50% or insufficient articles)",
+        "evidence": "MANDATORY: List 3-5 ACTUAL article titles/snippets from the SOURCE DATA below that demonstrate their bias. Format: 'Article: [Title] - [Why it shows bias]'. If no clear evidence, write: 'Insufficient evidence from analyzed articles to determine political affiliation.' DO NOT FABRICATE."
     }},
     
     "haloScore": {{
@@ -600,22 +610,22 @@ Not about whether they're right or wrong — it's about how visible, consistent,
     
     "notableWorks": [
         {{
-            "title": "Most significant article/investigation title - 99% accurate identification",
-            "url": "Direct URL to work",
-            "impact": "Specific description of significance and measurable impact",
-            "year": "Publication year if known",
-            "significance": "Why this work is considered notable (awards, public response, policy impact)"
+            "title": "Most impactful article title from analyzed set",
+            "url": "Direct URL from SOURCE DATA",
+            "impact": "Specific impact description",
+            "year": "Publication year if available",
+            "significance": "Why notable (awards, public impact, investigations)"
         }},
         {{
-            "title": "Second most notable work",
-            "url": "Direct URL to work", 
-            "impact": "Concrete impact description",
+            "title": "Second notable work",
+            "url": "URL from SOURCE DATA", 
+            "impact": "Impact description",
             "year": "Publication year",
             "significance": "Specific reason for notability"
         }},
         {{
             "title": "Third most significant work",
-            "url": "Direct URL to work",
+            "url": "URL from SOURCE DATA",
             "impact": "Measurable impact or recognition",
             "year": "Publication year",
             "significance": "Evidence of importance"
@@ -623,45 +633,45 @@ Not about whether they're right or wrong — it's about how visible, consistent,
     ],
     
     "awards": [
-        "Specific award name and year if found in data - be 99% accurate, otherwise use 'Not found in available data'"
+        "Only include awards mentioned in SOURCE DATA below - do not fabricate"
     ],
     
     "controversies": [
         {{
-            "description": "Objective, factual summary of controversy with specific details",
-            "severity": "High / Medium / Low",
-            "source": "Where this information came from",
-            "year": "When the controversy occurred if known"
+            "description": "Factual controversy description from SOURCE DATA",
+            "severity": "High / Medium / Low based on impact",
+            "source": "Where mentioned",
+            "year": "When occurred"
         }}
     ],
     
     "digitalPresence": {{
         "profileImage": "{corpus_data.get('profile_image', '')}",
-        "verifiedLinks": {json.dumps(list(corpus_data.get('social_links', {}).values()))},
-        "mediaAffiliations": ["List of publications/organizations journalist is associated with based on article domains - be 99% accurate"],
-        "onlineReach": "Low / Moderate / High / Very High based on social presence and article count"
+        "verifiedLinks": {json.dumps([{{"platform": k, "url": v.get("url", "")}} for k, v in corpus_data.get('social_links', {}).items()])},
+        "mediaAffiliations": ["Extract ONLY from article domains in SOURCE DATA - be precise"],
+        "onlineReach": "Low / Moderate / High / Very High based on article count and social presence"
     }},
     
     "engagementInsights": {{
-        "audienceSentiment": "Positive / Negative / Mixed / Polarizing",
-        "influenceLevel": "Low / Moderate / High / Very High",
+        "audienceSentiment": "Based on controversy score and article reception",
+        "influenceLevel": "Based on article count and publication quality",
         "controversyLevel": "{corpus_data.get('controversy_score', 0)}/10",
-        "trustworthiness": "Assessment based on domain trust scores and verification rate"
+        "trustworthiness": "Based on domain trust ({corpus_data['domain_trust']}/10) and verification rate ({corpus_data['verification_rate']}%)"
     }},
     
-    "ethicalAssessment": "Comprehensive 3-4 paragraph assessment discussing journalistic integrity, fact-checking practices, source transparency, bias management, accountability for errors, and overall ethical standards. Be specific and evidence-based. DISCUSS how their political bias (if any) affects their reporting objectivity. Include assessment of how their Halo Score reflects their professional accountability.",
+    "ethicalAssessment": "3-4 paragraph assessment of journalistic integrity, fact-checking, transparency, bias disclosure, and accountability. MUST discuss how their political bias (if detected) affects objectivity. Reference Halo Score components. Be specific with examples from analyzed articles.",
     
     "articlesAnalyzed": {{
         "total": {corpus_data.get('total_articles', 0)},
         "verificationRate": "{corpus_data.get('verification_rate', 0)}%",
-        "topDomains": ["Extract top 5-7 publication domains from articles - be 99% accurate"],
-        "dateRange": "Earliest to latest publication dates found",
+        "topDomains": ["List top 5-7 domains from analyzed articles - these reveal outlet affiliations"],
+        "dateRange": "Range of publication dates from analyzed articles",
         "keyArticles": [
             {{
-                "title": "Most significant article title from analyzed set",
+                "title": "Most significant article from analyzed set",
                 "url": "Article URL",
                 "date": "Publication date",
-                "significance": "Why this article is important - be specific"
+                "significance": "Why significant"
             }}
         ]
     }},
@@ -669,15 +679,15 @@ Not about whether they're right or wrong — it's about how visible, consistent,
     "toneAnalysis": {{
         "emotionalTone": "{corpus_data.get('tone_score', 0):.1f}/10",
         "bias": "{corpus_data.get('bias_label', 'unknown')}",
-        "objectivity": "Assessment of fact-based vs opinion-based writing - be specific about percentage",
-        "consistency": "Assessment of consistency in tone and approach across articles"
+        "objectivity": "Percentage of fact-based vs opinion writing",
+        "consistency": "Pattern consistency across articles"
     }},
     
     "recommendationScore": {{
         "overall": {corpus_data['halo_score_result']['score']},
-        "reasoning": "Brief recommendation on journalist reliability for readers: Should readers trust this journalist? Why or why not? MENTION their political leanings as a transparency factor readers should be aware of. Reference their Halo Score components.",
-        "strengths": ["Specific strength 1", "Specific strength 2", "Specific strength 3"],
-        "concerns": ["Specific concern 1 if any", "Specific concern 2 if any", "Political bias transparency concerns if applicable"]
+        "reasoning": "Should readers trust this journalist? Discuss reliability, bias transparency, and track record. MENTION political leanings as a transparency factor. Reference Halo Score.",
+        "strengths": ["Specific strength from evidence", "Second strength", "Third strength"],
+        "concerns": ["Specific concern if any", "Political bias transparency concerns if applicable"]
     }}
 }}
 
@@ -688,23 +698,23 @@ SOURCE DATA FOR ANALYSIS:
 {corpus_data['text_corpus']}
 
 ===========================================
-ENHANCED METADATA:
+CRITICAL METADATA:
 ===========================================
 - Total Articles Analyzed: {corpus_data['total_articles']}
 - Verification Rate: {corpus_data['verification_rate']}%
 - Domain Trust Score: {corpus_data['domain_trust']}/10
 - Automated Bias Detection: {corpus_data['bias_label']}
-- Automated Political Affiliation: {corpus_data.get('political_affiliation', {}).get('affiliation', 'Unknown')} (Confidence: {corpus_data.get('political_affiliation', {}).get('confidence', 0)}%)
-- Automated Halo Score: {corpus_data['halo_score_result']['score']}/100 ({corpus_data['halo_score_result']['level']})
+- Automated Political Hint: {corpus_data.get('political_affiliation', {}).get('affiliation', 'Unknown')} ({corpus_data.get('political_affiliation', {}).get('confidence', 0)}% confidence)
+- Automated Halo Score: {corpus_data['halo_score_result']['score']}/100
 - Awards Found: {len(corpus_data.get('awards', []))}
 
-**ACCURACY REQUIREMENTS:**
-- Political affiliation must be 99% accurate based on concrete evidence
-- Notable works must be the most significant and verifiable
-- All claims must be supported by data from the analyzed articles
-- No speculation or assumptions - only fact-based analysis
+**FINAL REMINDER:**
+- If you cannot determine political affiliation with 70%+ confidence → Use "Independent" or "Insufficient Data"
+- NEVER fabricate evidence
+- ONLY use information from SOURCE DATA above
+- Political affiliation must be backed by SPECIFIC article examples
 
-NOW GENERATE THE COMPLETE JSON ANALYSIS WITH 99% ACCURACY:
+NOW GENERATE THE COMPLETE JSON ANALYSIS:
 """
     
     # Call NVIDIA API
