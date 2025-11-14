@@ -35,8 +35,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getApiBaseUrl } from "@/config/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://datahalo.onrender.com" || "http://localhost:8000";
+const API_URL = getApiBaseUrl();
 
 interface NarrativeAnalysis {
   topic: string;
@@ -122,6 +123,11 @@ const NarrativeAnalyzer = () => {
         ? { url: url }
         : { topic: topic, days: parseInt(timeframe) };
       
+      console.log(' Mode:', mode);
+      console.log(' Endpoint:', endpoint);
+      console.log(' Request Body:', requestBody);
+      console.log(' Full URL:', `${API_URL}${endpoint}`);
+      
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: {
@@ -131,6 +137,9 @@ const NarrativeAnalyzer = () => {
       });
 
       const data = await response.json();
+      
+      console.log(' Response Status:', response.status);
+      console.log(' Response Data:', data);
 
       if (response.ok && data.status === "success") {
         setAnalysis(data.analysis);
@@ -355,6 +364,45 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
 
               {/* Search Interface */}
               <div className="space-y-4">
+                {/* Mode Selection - Make it more prominent */}
+                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
+                  <label className="block text-sm font-semibold mb-3">Analysis Mode</label>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setMode('topic');
+                        setError("");
+                        setSuggestions([]);
+                      }}
+                      className={`flex-1 py-6 text-base font-semibold transition-all ${
+                        mode === 'topic' 
+                          ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90' 
+                          : 'bg-card/50 hover:bg-primary/10 hover:border-primary/50'
+                      }`}
+                    >
+                      <FileText className="w-5 h-5 mr-2" />
+                      Topic Analysis
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setMode('url');
+                        setError("");
+                        setSuggestions([]);
+                      }}
+                      className={`flex-1 py-6 text-base font-semibold transition-all ${
+                        mode === 'url' 
+                          ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90' 
+                          : 'bg-card/50 hover:bg-primary/10 hover:border-primary/50'
+                      }`}
+                    >
+                      <Link className="w-5 h-5 mr-2" />
+                      URL Analysis
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-2">
@@ -389,48 +437,30 @@ Citation: DataHalo. (${new Date().getFullYear()}). Narrative Analysis: ${analysi
                   </div>
                 </div>
 
-                {/* Mode Selection */}
-                <div className="flex items-center gap-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMode('topic')}
-                    className={`text-xs ${mode === 'topic' ? 'bg-primary/10 border-primary/30' : 'hover:bg-primary/10 hover:border-primary/50'}`}
-                  >
-                    Topic
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMode('url')}
-                    className={`text-xs ${mode === 'url' ? 'bg-primary/10 border-primary/30' : 'hover:bg-primary/10 hover:border-primary/50'}`}
-                  >
-                    URL
-                  </Button>
-                </div>
-
                 {/* Suggested Topics */}
-                <div>
-                  <label className="block text-sm font-semibold mb-2">
-                    Popular Topics
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestedTopics.map((suggested) => (
-                      <Button
-                        key={suggested}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setTopic(suggested);
-                          setMode('topic');
-                        }}
-                        className="text-xs hover:bg-primary/10 hover:border-primary/50"
-                      >
-                        {suggested}
-                      </Button>
-                    ))}
+                {mode === 'topic' && (
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      Popular Topics
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedTopics.map((suggested) => (
+                        <Button
+                          key={suggested}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setTopic(suggested);
+                            setMode('topic');
+                          }}
+                          className="text-xs hover:bg-primary/10 hover:border-primary/50"
+                        >
+                          {suggested}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Analyze Button */}
                 <Button

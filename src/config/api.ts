@@ -5,7 +5,8 @@
 const isLocalhost = typeof window !== 'undefined' && 
   (window.location.hostname === 'localhost' || 
    window.location.hostname === '127.0.0.1' || 
-   window.location.hostname === '::1');
+   window.location.hostname === '::1' ||
+   window.location.hostname === 'localhost:8000');
 
 // API Base URLs
 const API_BASE_URLS = {
@@ -67,7 +68,8 @@ export const debugApiConfig = () => {
     hostname: typeof window !== 'undefined' ? window.location.hostname : 'server-side',
     isDevelopment: typeof window !== 'undefined' && (
       window.location.hostname === 'localhost' || 
-      window.location.hostname === '127.0.0.1'
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === 'localhost:8000'
     ),
     envVar: typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : 'not available',
   };

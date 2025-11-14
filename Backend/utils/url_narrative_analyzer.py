@@ -1,6 +1,7 @@
 """
 URL-Based Narrative Analyzer
 Comprehensive analysis of news stories from URLs including timeline, manipulation detection, and source clustering
+Enhanced with AI-powered article understanding
 """
 
 import requests
@@ -11,6 +12,7 @@ from typing import Dict, Any, List, Optional
 import os
 import re
 from collections import Counter, defaultdict
+import json
 
 logger = logging.getLogger("url_narrative_analyzer")
 
@@ -19,7 +21,7 @@ NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
 
 def extract_article_content(url: str) -> Dict[str, Any]:
-    """Extract article content and metadata from URL."""
+    """Extract article content and metadata from URL with enhanced parsing."""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -29,10 +31,12 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Extract title
+        # Extract title (try multiple methods)
         title = None
         if soup.find('h1'):
             title = soup.find('h1').get_text(strip=True)
+        elif soup.find('meta', attrs={'property': 'og:title'}):
+            title = soup.find('meta', attrs={'property': 'og:title'}).get('content', '')
         elif soup.find('title'):
             title = soup.find('title').get_text(strip=True)
         
@@ -51,22 +55,34 @@ def extract_article_content(url: str) -> Dict[str, Any]:
             # Extract from URL
             from urllib.parse import urlparse
             domain = urlparse(url).netloc
-            source = domain.replace('www.', '').replace('.com', '').replace('.in', '').title()
+            source = domain.replace('www.', '').replace('.com', '').replace('.in', '').replace('.org', '').title()
         
         # Extract publish date
         published_date = None
-        meta_date = soup.find('meta', attrs={'property': 'article:published_time'}) or soup.find('meta', attrs={'name': 'publishdate'})
+        meta_date = soup.find('meta', attrs={'property': 'article:published_time'}) or soup.find('meta', attrs={'name': 'publishdate'}) or soup.find('time')
         if meta_date:
-            published_date = meta_date.get('content', '')
+            published_date = meta_date.get('content', '') or meta_date.get('datetime', '')
         
-        # Extract article body
+        # Extract article body (improved)
         article_body = []
-        for p in soup.find_all('p'):
+        
+        # Try article tag first
+        article_tag = soup.find('article')
+        if article_tag:
+            paragraphs = article_tag.find_all('p')
+        else:
+            paragraphs = soup.find_all('p')
+        
+        for p in paragraphs:
             text = p.get_text(strip=True)
             if len(text) > 50:  # Only substantial paragraphs
                 article_body.append(text)
         
-        content = ' '.join(article_body[:10])  # First 10 paragraphs
+        # Get full content (first 15 paragraphs for better context)
+        content = ' '.join(article_body[:15])
+        
+        # Extract main topic/subject from title and content
+        main_topic = _extract_main_topic(title, description or content[:500])
         
         # Extract keywords/tags
         keywords = []
@@ -74,14 +90,25 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         if meta_keywords:
             keywords = [k.strip() for k in meta_keywords.get('content', '').split(',')]
         
+        # Extract author
+        author = None
+        meta_author = soup.find('meta', attrs={'name': 'author'}) or soup.find('meta', attrs={'property': 'article:author'})
+        if meta_author:
+            author = meta_author.get('content', '')
+        
+        logger.info(f"✅ Extracted article: '{title[:60]}...' from {source}")
+        
         return {
             'url': url,
             'title': title or 'No title found',
             'description': description or content[:500],
             'source': source or 'Unknown Source',
+            'author': author,
             'published_date': published_date or datetime.utcnow().isoformat(),
             'content': content,
             'keywords': keywords,
+            'main_topic': main_topic,
+            'word_count': len(content.split()),
             'success': True
         }
         
@@ -92,6 +119,95 @@ def extract_article_content(url: str) -> Dict[str, Any]:
             'success': False,
             'error': str(e)
         }
+
+
+def _extract_main_topic(title: str, content: str) -> str:
+    """Extract the main topic/subject from title and content."""
+    # Remove common words
+    stopwords = {'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'has', 'have', 'will', 'be'}
+    
+    # Extract capitalized phrases (likely proper nouns/topics)
+    text = title + ' ' + content
+    capitalized = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+    
+    if capitalized:
+        # Most common capitalized phrase
+        topic_counts = Counter(capitalized)
+        return topic_counts.most_common(1)[0][0]
+    
+    # Fallback: extract key words from title
+    words = [w for w in re.findall(r'\b\w+\b', title.lower()) if w not in stopwords and len(w) > 4]
+    return ' '.join(words[:2]).title() if words else "General News"
+
+
+async def analyze_article_with_ai(article: Dict[str, Any], ai_api_key: str) -> Dict[str, Any]:
+    """Use AI to deeply analyze the article content and extract key insights."""
+    if not ai_api_key:
+        return {}
+    
+    try:
+        # Build detailed prompt for article analysis
+        prompt = f"""Analyze this news article in detail:
+
+Title: {article.get('title', '')}
+Source: {article.get('source', '')}
+Content: {article.get('content', '')[:2000]}
+
+Provide a JSON analysis with:
+
+{{
+  "summary": "concise 2-3 sentence summary",
+  "key_points": ["point 1", "point 2", "point 3"],
+  "main_subjects": ["subject 1", "subject 2"],
+  "political_angle": "describe the political/ideological angle if any",
+  "tone": "Neutral/Supportive/Critical/Alarmist",
+  "credibility_signals": ["signal 1", "signal 2"],
+  "potential_biases": ["bias 1", "bias 2"],
+  "target_audience": "who this article is aimed at",
+  "narrative_framing": "how the story is framed",
+  "missing_context": ["what context is missing"],
+  "questions_raised": ["what questions does this raise"]
+}}
+
+Be specific and cite details from the article."""
+
+        headers = {
+            "Authorization": f"Bearer {ai_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "meta/llama-3.1-70b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "top_p": 0.85,
+            "max_tokens": 1500
+        }
+
+        logger.info("🤖 Calling AI for article analysis...")
+        response = requests.post(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+
+        ai_response = response.json()
+        content = ai_response["choices"][0]["message"]["content"]
+
+        # Parse JSON from response
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            analysis = json.loads(json_match.group(0))
+            logger.info("✅ AI article analysis complete")
+            return analysis
+        else:
+            return json.loads(content)
+            
+    except Exception as e:
+        logger.error(f"AI analysis failed: {str(e)}")
+        return {}
 
 
 def find_related_articles(original_article: Dict[str, Any], days: int = 14) -> List[Dict[str, Any]]:
@@ -485,78 +601,150 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
     
     Args:
         url: The article URL to analyze
-        serp_api_key: SerpAPI key for finding related articles
+        serp_api_key: SerpAPI key for finding related articles  
         ai_api_key: NVIDIA API key for AI analysis
         days: Number of days to look back for related articles
     
     Returns:
-        Complete analysis including timeline, manipulation detection, sentiment mapping, and source clustering
+        Complete analysis including AI insights, timeline, manipulation detection, sentiment mapping, and source clustering
     """
     try:
+        logger.info(f"🔍 Starting comprehensive URL narrative analysis for: {url}")
+        
         # Step 1: Extract article content from URL
+        logger.info("📄 Step 1: Extracting article content...")
         original_article = extract_article_content(url)
         
-        if not original_article.get("title"):
-            raise ValueError("Could not extract article content from URL")
+        if not original_article.get("success") or not original_article.get("title"):
+            raise ValueError(f"Could not extract article content from URL: {original_article.get('error', 'Unknown error')}")
         
-        # Step 2: Find related articles
+        logger.info(f"✅ Article extracted: '{original_article['title'][:60]}...' ({original_article.get('word_count', 0)} words)")
+        
+        # Step 2: AI Analysis of the original article
+        logger.info("🤖 Step 2: Performing AI analysis of article content...")
+        ai_analysis = await analyze_article_with_ai(original_article, ai_api_key)
+        
+        # Step 3: Find related articles across different outlets
+        logger.info(f"🔎 Step 3: Searching for related articles (last {days} days)...")
         related_articles = find_related_articles(original_article, days)
+        logger.info(f"✅ Found {len(related_articles)} related articles")
         
         # Combine original with related articles
         all_articles = [original_article] + related_articles
         
-        if len(all_articles) < 3:
-            # Not enough data for comprehensive analysis
-            return {
-                "status": "limited_data",
-                "analysis": {
-                    "url": url,
-                    "title": original_article.get("title"),
-                    "totalArticles": len(all_articles),
-                    "message": "Not enough related articles found for comprehensive analysis",
-                    "originalArticle": original_article
-                }
-            }
-        
-        # Step 3: Analyze timeline
+        # Step 4: Analyze timeline
+        logger.info("📅 Step 4: Analyzing coverage timeline...")
         timeline = analyze_timeline(all_articles)
         
-        # Step 4: Detect manipulation indicators
+        # Step 5: Detect manipulation indicators
+        logger.info("🔍 Step 5: Detecting manipulation indicators...")
         manipulation_indicators = detect_manipulation(all_articles, timeline)
         
-        # Step 5: Analyze sentiment mapping
+        # Step 6: Analyze sentiment mapping
+        logger.info("😊 Step 6: Mapping sentiment across sources...")
         sentiment_map = analyze_sentiment_map(all_articles)
         
-        # Step 6: Analyze source clustering
+        # Step 7: Analyze source clustering
+        logger.info("📰 Step 7: Analyzing source clusters and narrative angles...")
         source_clustering = analyze_source_clustering(all_articles)
         
-        # Step 7: Compile comprehensive analysis
+        # Step 8: Compile comprehensive analysis with clear explanations
+        logger.info("📊 Step 8: Compiling comprehensive analysis...")
+        
+        # Build clear narrative explanations
+        coverage_scale = len(all_articles)
+        coverage_description = (
+            f"This story has {coverage_scale} articles across {source_clustering.get('total_sources', 0)} sources. "
+            f"{'Major coverage' if coverage_scale > 20 else 'Moderate coverage' if coverage_scale > 10 else 'Limited coverage'} "
+            f"indicates this is {'a highly significant' if coverage_scale > 20 else 'an important' if coverage_scale > 10 else 'an emerging'} narrative."
+        )
+        
+        # Sentiment explanation
+        overall_sentiment = get_overall_sentiment(sentiment_map)
+        sentiment_counts = sentiment_map.get('overall', {})
+        sentiment_description = (
+            f"Overall sentiment is {overall_sentiment}. "
+            f"Analysis shows {sentiment_counts.get('positive', 0)} positive, "
+            f"{sentiment_counts.get('negative', 0)} negative, and "
+            f"{sentiment_counts.get('neutral', 0)} neutral articles. "
+            f"This {'' if overall_sentiment == 'Neutral' else 'non-'}balanced coverage suggests "
+            f"{'varied perspectives' if overall_sentiment == 'Neutral' else 'a dominant narrative angle'}."
+        )
+        
+        # Timeline description
+        timeline_description = ""
+        if timeline and len(timeline) > 1:
+            first_date = timeline[-1]['date']
+            latest_date = timeline[0]['date']
+            peak = max(timeline, key=lambda x: x['count'])
+            timeline_description = (
+                f"Coverage spans from {first_date} to {latest_date}. "
+                f"Peak coverage was on {peak['date']} with {peak['count']} articles. "
+                f"{'Coverage is accelerating' if timeline[0]['count'] > timeline[-1]['count'] else 'Coverage is declining'}."
+            )
+        
         analysis_result = {
             "url": url,
             "title": original_article.get("title"),
             "source": original_article.get("source"),
+            "author": original_article.get("author"),
             "publishedDate": original_article.get("published_date"),
-            "totalArticles": len(all_articles),
-            "timeframe": f"{days} days",
+            "mainTopic": original_article.get("main_topic"),
+            "wordCount": original_article.get("word_count"),
+            
+            # AI Insights - THE KEY ADDITION
+            "articleInsights": {
+                **ai_analysis,
+                "extraction_quality": "high" if original_article.get('word_count', 0) > 500 else "moderate",
+                "readability": "detailed analysis" if original_article.get('word_count', 0) > 800 else "standard article"
+            },
+            
+            # Coverage summary with clear explanations
+            "coverageSummary": {
+                "totalArticles": len(all_articles),
+                "relatedArticles": len(related_articles),
+                "totalSources": source_clustering.get('total_sources', 0),
+                "timeframe": f"{days} days",
+                "description": coverage_description,
+                "sentimentDescription": sentiment_description,
+                "timelineDescription": timeline_description
+            },
             
             # Narrative pattern
             "narrativePattern": {
                 "rising": len(all_articles) > 10,
                 "trend": "Rising" if len(all_articles) > 20 else "Stable" if len(all_articles) > 10 else "Emerging",
-                "sentiment": get_overall_sentiment(sentiment_map),
+                "sentiment": overall_sentiment,
                 "intensity": min(100, len(all_articles) * 5)  # Scale intensity based on coverage
             },
             
-            # Timeline
+            # Timeline with explanations
             "timeline": timeline[:10],  # Limit to recent 10 points
             
             # Key narratives (extracted from source clusters)
             "keyNarratives": _build_key_narratives(source_clustering, timeline, all_articles),
             
-            # Manipulation indicators
-            "manipulation_indicators": manipulation_indicators,
+            # Manipulation indicators with detailed explanations
+            "manipulation_indicators": {
+                **manipulation_indicators,
+                "overall_assessment": (
+                    "⚠️ Multiple manipulation indicators detected" if sum([
+                        manipulation_indicators.get('coordinated_timing', False),
+                        manipulation_indicators.get('source_clustering', False),
+                        manipulation_indicators.get('sentiment_uniformity', False),
+                        manipulation_indicators.get('sudden_spike', False)
+                    ]) >= 2 else
+                    "⚠️ Some manipulation indicators present" if any([
+                        manipulation_indicators.get('coordinated_timing', False),
+                        manipulation_indicators.get('source_clustering', False),
+                        manipulation_indicators.get('sentiment_uniformity', False),
+                        manipulation_indicators.get('sudden_spike', False)
+                    ]) else
+                    "✅ No significant manipulation indicators detected"
+                )
+            },
             
-            # Context
+            # Context with better organization
             "context": {
                 "majorEvents": [
                     event
@@ -564,27 +752,54 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
                     for event in point.get('keyEvents', [])
                 ][:10],
                 "relatedTopics": _extract_related_topics(all_articles)[:8],
-                "potentialTriggers": []
+                "potentialTriggers": ai_analysis.get('questions_raised', [])[:5] if ai_analysis else [],
+                "missingContext": ai_analysis.get('missing_context', [])[:5] if ai_analysis else []
             },
             
-            # Source details
-            "sourceAnalysis": source_clustering,
+            # Detailed source analysis
+            "sourceAnalysis": {
+                **source_clustering,
+                "diversity_score": min(100, source_clustering.get('total_sources', 0) * 10),
+                "concentration_risk": "High" if source_clustering.get('total_sources', 0) < 3 else "Moderate" if source_clustering.get('total_sources', 0) < 8 else "Low"
+            },
             
-            # Sentiment details
-            "sentimentAnalysis": sentiment_map,
+            # Detailed sentiment analysis
+            "sentimentAnalysis": {
+                **sentiment_map,
+                "consistency": "uniform" if any([
+                    v > 0.8 for v in [
+                        sentiment_counts.get('positive', 0) / max(sum(sentiment_counts.values()), 1),
+                        sentiment_counts.get('negative', 0) / max(sum(sentiment_counts.values()), 1),
+                        sentiment_counts.get('neutral', 0) / max(sum(sentiment_counts.values()), 1)
+                    ]
+                ]) else "varied"
+            },
             
-            # Original article
+            # Original article details
             "originalArticle": {
                 "title": original_article.get("title"),
                 "url": url,
                 "source": original_article.get("source"),
+                "author": original_article.get("author"),
                 "published": original_article.get("published_date"),
-                "description": original_article.get("description", "")[:200]
+                "description": original_article.get("description", "")[:300],
+                "keywords": original_article.get("keywords", [])[:10],
+                "excerpt": original_article.get("content", "")[:500]
+            },
+            
+            # Research utility
+            "researchNotes": {
+                "dataQuality": "high" if len(all_articles) > 10 else "moderate" if len(all_articles) > 5 else "limited",
+                "analysisConfidence": "high" if len(all_articles) > 15 and source_clustering.get('total_sources', 0) > 5 else "moderate",
+                "recommendedActions": _generate_recommendations(len(all_articles), source_clustering, manipulation_indicators)
             }
         }
         
-        # Step 8: Generate export data
+        # Step 9: Generate export data for researchers
+        logger.info("📦 Step 9: Generating export data...")
         export_data = generate_export_data(analysis_result)
+        
+        logger.info(f"✅ URL narrative analysis complete! {len(all_articles)} articles analyzed across {source_clustering.get('total_sources', 0)} sources")
         
         return {
             "status": "success",
@@ -594,10 +809,32 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         
     except Exception as e:
         import traceback
-        logger.error(f"URL narrative analysis failed: {str(e)}")
+        logger.error(f"❌ URL narrative analysis failed: {str(e)}")
         logger.error(traceback.format_exc())
         return {
             "status": "error",
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+
+def _generate_recommendations(article_count: int, source_clustering: Dict, manipulation_indicators: Dict) -> List[str]:
+    """Generate actionable recommendations based on analysis."""
+    recommendations = []
+    
+    if article_count < 5:
+        recommendations.append("Limited data - consider expanding timeframe or search terms")
+    
+    if source_clustering.get('total_sources', 0) < 3:
+        recommendations.append("Low source diversity - verify information with additional sources")
+    
+    if manipulation_indicators.get('sentiment_uniformity'):
+        recommendations.append("Uniform sentiment detected - seek alternative perspectives")
+    
+    if manipulation_indicators.get('coordinated_timing'):
+        recommendations.append("Coordinated timing detected - investigate source relationships")
+    
+    if not recommendations:
+        recommendations.append("Analysis shows healthy media coverage with good source diversity")
+    
+    return recommendations
