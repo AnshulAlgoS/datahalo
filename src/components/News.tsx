@@ -162,12 +162,30 @@ const News = () => {
 
   const handleGenerateAnalysis = async () => {
     setAnalyzingNews(true);
+    setError("");
     try {
-      // Add logic to generate analysis here
-      const analysis = "Sample analysis";
-      setSmartAnalysis(analysis);
+      const apiUrl = buildApiUrl(API_ENDPOINTS.SMART_FEED);
+      const res = await fetch(`${apiUrl}?pov=${encodeURIComponent(perspective)}`, {
+        method: "POST",
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'omit',
+        mode: 'cors'
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      setSmartAnalysis(data.summary || "No analysis available.");
+      setSmartFeed(data.summary || "No smart feed available.");
     } catch (error: any) {
       console.error("Error generating analysis:", error);
+      setError(error.message || "Failed to generate analysis");
+      setSmartAnalysis("");
     } finally {
       setAnalyzingNews(false);
     }
