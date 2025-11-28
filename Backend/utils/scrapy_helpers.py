@@ -417,14 +417,14 @@ if __name__ == "__main__":
     test_url = sys.argv[1]
     test_name = sys.argv[2] if len(sys.argv) > 2 else None
     
-    print(f"\n🔍 Scraping: {test_url}")
+    print(f"\nSEARCH: Scraping: {test_url}")
     if test_name:
         print(f"👤 Journalist: {test_name}")
     
     result = run_scrapy_for_url(test_url, journalist_name=test_name, save_local=True)
     
     print("\n" + "=" * 80)
-    print("📊 SCRAPY RESULTS")
+    print("STATS: SCRAPY RESULTS")
     print("=" * 80)
     
     print(json.dumps({
@@ -440,4 +440,4 @@ if __name__ == "__main__":
         "emails": result.get("emails", []),
     }, indent=2))
     
-    print("\n✅ Done!")
+    print("\nSUCCESS: Done!")

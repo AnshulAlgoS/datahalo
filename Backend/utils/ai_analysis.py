@@ -492,8 +492,8 @@ Your task: Generate a **comprehensive, factual, and deeply analytical profile** 
 
 **CRITICAL INSTRUCTIONS FOR POLITICAL AFFILIATION (99% ACCURACY REQUIRED):**
 
-⚠️ **NEVER DEFAULT TO ANY PARTY WITHOUT CONCRETE EVIDENCE**
-⚠️ **DO NOT GUESS - IF UNCERTAIN, USE "Independent" or "Insufficient Data"**
+WARNING: **NEVER DEFAULT TO ANY PARTY WITHOUT CONCRETE EVIDENCE**
+WARNING: **DO NOT GUESS - IF UNCERTAIN, USE "Independent" or "Insufficient Data"**
 
 **STEP-BY-STEP POLITICAL BIAS DETECTION PROCESS:**
 
@@ -550,10 +550,10 @@ Your task: Generate a **comprehensive, factual, and deeply analytical profile** 
    | Cannot determine from evidence | "None Detected" | Low |
 
 **FORBIDDEN DEFAULTS:**
-❌ DO NOT default to "Congress" without evidence
-❌ DO NOT assume "Left-leaning" just because they criticize government
-❌ DO NOT confuse "Anti-BJP" with "Pro-Congress" (they are different!)
-❌ DO NOT ignore the media outlets they write for
+ERROR: DO NOT default to "Congress" without evidence
+ERROR: DO NOT assume "Left-leaning" just because they criticize government
+ERROR: DO NOT confuse "Anti-BJP" with "Pro-Congress" (they are different!)
+ERROR: DO NOT ignore the media outlets they write for
 
 **REQUIRED JSON STRUCTURE:**
 {{
@@ -771,7 +771,7 @@ NOW GENERATE THE COMPLETE JSON ANALYSIS:
                 }
             }
             
-            logger.info(f"✅ Successfully analyzed journalist: {name}")
+            logger.info(f"SUCCESS: Successfully analyzed journalist: {name}")
             return result
             
         except json.JSONDecodeError as e:
@@ -829,7 +829,7 @@ def analyze_journalists_batch(journalists_data: List[Dict[str, Any]]) -> List[Di
         try:
             result = analyze_journalist(name, data)
             results.append(result)
-            logger.info(f"✅ Batch analysis complete for: {name}")
+            logger.info(f"SUCCESS: Batch analysis complete for: {name}")
         except Exception as e:
             logger.error(f"✗ Batch analysis failed for {name}: {str(e)}")
             results.append({

@@ -1,7 +1,22 @@
 import { motion } from "framer-motion";
-import { Scale, FileText, Volume2, Users, BarChart2, Plug } from "lucide-react";
+import { Scale, FileText, Volume2, Users, BarChart2, Plug, PenTool, GraduationCap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const features = [
+  {
+    icon: PenTool,
+    title: "Article Writing Analyzer",
+    description: "NEW! Grade your articles with AI (A+ to F). Get instant feedback on objectivity, sources, bias, and writing quality.",
+    isNew: true,
+    link: "/article-analyzer",
+  },
+  {
+    icon: GraduationCap,
+    title: "Media Literacy Training",
+    description: "Learn to identify bias, propaganda, and manipulation. Interactive lessons for students and journalists.",
+    isNew: true,
+    link: "/narrative-analyzer",
+  },
   {
     icon: Scale,
     title: "Bias & Sentiment Detection",
@@ -13,28 +28,21 @@ const features = [
     description: "Verify sources, cross-reference citations, and assess factual accuracy of reporting.",
   },
   {
-    icon: Volume2,
-    title: "Tone & Authenticity Check",
-    description: "Evaluate writing consistency, authenticity markers, and potential ghostwriting patterns.",
-  },
-  {
     icon: Users,
-    title: "Engagement Validity",
-    description: "Distinguish genuine audience engagement from bot activity and manipulation.",
+    title: "Journalist Profile Analysis",
+    description: "Comprehensive analysis of journalists' work, credibility, and transparency patterns.",
   },
   {
     icon: BarChart2,
-    title: "Public Trust Dashboard",
-    description: "Real-time credibility scores and transparent metrics accessible to everyone.",
-  },
-  {
-    icon: Plug,
-    title: "API Integration",
-    description: "Seamless integration with news platforms, CMS systems, and social media.",
+    title: "Narrative Tracking",
+    description: "Track how media narratives evolve and detect coordinated messaging patterns.",
+    link: "/narrative-analyzer",
   },
 ];
 
 const Features = () => {
+  const navigate = useNavigate();
+
   return (
     <section id="features" className="relative min-h-screen flex items-center py-24 px-6 overflow-hidden">
       {/* Background pattern */}
@@ -54,7 +62,7 @@ const Features = () => {
             Powerful <span className="text-primary">Features</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Comprehensive tools for verifying journalist credibility and content authenticity
+            From media analysis to education - comprehensive tools for journalists, students, and researchers
           </p>
         </motion.div>
 
@@ -67,8 +75,16 @@ const Features = () => {
               transition={{ duration: 0.4, delay: index * 0.1 }}
               viewport={{ once: true }}
               whileHover={{ y: -8 }}
+              onClick={() => feature.link && navigate(feature.link)}
               className="group relative p-6 rounded-2xl bg-card/40 backdrop-blur-md border border-border/50 hover:border-primary/50 transition-all duration-300 cursor-pointer"
             >
+              {/* NEW Badge */}
+              {feature.isNew && (
+                <div className="absolute top-4 right-4 px-2 py-1 rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                  NEW
+                </div>
+              )}
+
               {/* Gradient background on hover */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               

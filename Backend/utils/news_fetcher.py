@@ -19,9 +19,9 @@ try:
     client = MongoClient(MONGO_URI)
     db = client["datahalo"]
     news_collection = db["news"]
-    logger.info("✅ MongoDB connected successfully")
+    logger.info("SUCCESS: MongoDB connected successfully")
 except Exception as e:
-    logger.error(f"❌ MongoDB connection failed: {e}")
+    logger.error(f"ERROR: MongoDB connection failed: {e}")
     client = None
     db = None
     news_collection = None
@@ -29,14 +29,14 @@ except Exception as e:
 def fetch_news(category="general", language="en", page_size=30):
     """Fetch latest news and APPEND to database (don't delete old articles)."""
     if not NEWS_API_KEY:
-        logger.error("❌ NEWS_API_KEY not configured")
+        logger.error("ERROR: NEWS_API_KEY not configured")
         return {"count": 0, "articles": [], "error": "API key not configured"}
     
     if news_collection is None:
-        logger.error("❌ Database not available")
+        logger.error("ERROR: Database not available")
         return {"count": 0, "articles": [], "error": "Database not available"}
 
-    logger.info(f"🌐 Fetching fresh {category} news from NewsAPI")
+    logger.info(f"WEB: Fetching fresh {category} news from NewsAPI")
 
     # 1️⃣ Try top-headlines first
     top_url = "https://newsapi.org/v2/top-headlines"
@@ -55,13 +55,13 @@ def fetch_news(category="general", language="en", page_size=30):
         top_response.raise_for_status()
         top_data = top_response.json()
         articles = top_data.get("articles", []) if top_data.get("status") == "ok" else []
-        logger.info(f"📰 Got {len(articles)} articles from top-headlines")
+        logger.info(f"NEWS: Got {len(articles)} articles from top-headlines")
     except Exception as e:
-        logger.warning(f"⚠️ Top-headlines failed: {e}")
+        logger.warning(f"WARNING: Top-headlines failed: {e}")
 
     # 2️⃣ Fallback to "everything" if no results
     if not articles:
-        logger.info("🔄 Falling back to 'everything' search...")
+        logger.info("REFRESH: Falling back to 'everything' search...")
         search_url = "https://newsapi.org/v2/everything"
         search_params = {
             "apiKey": NEWS_API_KEY,
@@ -77,16 +77,16 @@ def fetch_news(category="general", language="en", page_size=30):
             search_data = search_response.json()
             if search_data.get("status") == "ok":
                 articles = search_data.get("articles", [])
-                logger.info(f"📰 Got {len(articles)} articles from everything search")
+                logger.info(f"NEWS: Got {len(articles)} articles from everything search")
             else:
-                logger.error(f"❌ Fallback fetch failed: {search_data}")
+                logger.error(f"ERROR: Fallback fetch failed: {search_data}")
                 return {"count": 0, "articles": [], "error": "API fallback failed"}
         except Exception as e:
-            logger.error(f"❌ Fallback request failed: {e}")
+            logger.error(f"ERROR: Fallback request failed: {e}")
             return {"count": 0, "articles": [], "error": f"Fallback failed: {str(e)}"}
 
     if not articles:
-        logger.warning("⚠️ No articles found from any source")
+        logger.warning("WARNING: No articles found from any source")
         return {"count": 0, "articles": [], "error": "No articles found"}
 
     # 3️⃣ Process and store NEW articles (append, don't replace)
@@ -122,10 +122,10 @@ def fetch_news(category="general", language="en", page_size=30):
                 new_articles.append(article)
                 stored_count += 1
             except Exception as e:
-                logger.error(f"❌ Failed to store article: {e}")
+                logger.error(f"ERROR: Failed to store article: {e}")
                 continue
 
-        logger.info(f"✅ Stored {stored_count} NEW {category} articles in DB (skipped {duplicate_count} duplicates)")
+        logger.info(f"SUCCESS: Stored {stored_count} NEW {category} articles in DB (skipped {duplicate_count} duplicates)")
         
         # Get all articles for this category sorted by newest first
         all_articles = get_saved_articles(category=category, limit=100)
@@ -140,7 +140,7 @@ def fetch_news(category="general", language="en", page_size=30):
         }
         
     except Exception as e:
-        logger.error(f"❌ Database operation failed: {e}")
+        logger.error(f"ERROR: Database operation failed: {e}")
         return {"count": 0, "articles": [], "error": f"Database error: {str(e)}"}
 
 def refresh_news(category="general", language="en", page_size=30):
@@ -148,11 +148,11 @@ def refresh_news(category="general", language="en", page_size=30):
     Refresh news: Fetch fresh articles and append to existing ones.
     Returns all articles with newest at the top.
     """
-    logger.info(f"🔄 Refreshing {category} news...")
+    logger.info(f"REFRESH: Refreshing {category} news...")
     result = fetch_news(category, language, page_size)
     
     if result.get("status") == "success":
-        logger.info(f"✅ Refresh complete: {result['count']} new articles added, {result['total_in_db']} total in DB")
+        logger.info(f"SUCCESS: Refresh complete: {result['count']} new articles added, {result['total_in_db']} total in DB")
     
     return result
 
@@ -174,11 +174,11 @@ def get_saved_articles(category="all", limit=100):
         for article in articles:
             article["_id"] = str(article["_id"])
             
-        logger.info(f"📚 Retrieved {len(articles)} saved articles for category: {category}")
+        logger.info(f"DATA: Retrieved {len(articles)} saved articles for category: {category}")
         return articles
         
     except Exception as e:
-        logger.error(f"❌ Error retrieving articles: {e}")
+        logger.error(f"ERROR: Error retrieving articles: {e}")
         return []
 
 def clean_old_articles(days_to_keep=30):
@@ -187,17 +187,17 @@ def clean_old_articles(days_to_keep=30):
     Keeps articles from the last N days.
     """
     if news_collection is None:
-        logger.error("❌ Database not available")
+        logger.error("ERROR: Database not available")
         return 0
     
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
         result = news_collection.delete_many({"fetchedAt": {"$lt": cutoff_date}})
         deleted_count = result.deleted_count
-        logger.info(f"🗑️ Cleaned {deleted_count} articles older than {days_to_keep} days")
+        logger.info(f"CLEAN: Cleaned {deleted_count} articles older than {days_to_keep} days")
         return deleted_count
     except Exception as e:
-        logger.error(f"❌ Error cleaning old articles: {e}")
+        logger.error(f"ERROR: Error cleaning old articles: {e}")
         return 0
 
 def get_articles_count_by_category():
@@ -212,10 +212,10 @@ def get_articles_count_by_category():
         ]
         results = list(news_collection.aggregate(pipeline))
         counts = {item["_id"]: item["count"] for item in results}
-        logger.info(f"📊 Article counts by category: {counts}")
+        logger.info(f"STATS: Article counts by category: {counts}")
         return counts
     except Exception as e:
-        logger.error(f"❌ Error getting article counts: {e}")
+        logger.error(f"ERROR: Error getting article counts: {e}")
         return {}
 
 if __name__ == "__main__":

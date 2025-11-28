@@ -303,7 +303,7 @@ const Contact = () => {
             <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground">
               <span>🚀 Powered by NVIDIA AI</span>
               <span>•</span>
-              <span>📊 Real-time Analysis</span>
+              <span>STATS: Real-time Analysis</span>
               <span>•</span>
               <span>🔒 Privacy First</span>
               <span>•</span>

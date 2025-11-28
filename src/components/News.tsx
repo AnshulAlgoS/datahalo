@@ -66,6 +66,7 @@ const News = () => {
 
   const perspectives = [
     { value: "general public", label: "General Public", icon: Users },
+    { value: "journalism student", label: "Journalism Student", icon: Newspaper },
     { value: "finance analyst", label: "Finance Analyst", icon: TrendingUp },
     { value: "government exam aspirant", label: "Govt. Exam Aspirant", icon: GraduationCap },
     { value: "tech student", label: "Tech Student", icon: Cpu },
@@ -322,7 +323,7 @@ const News = () => {
 
           {articles.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {articles.slice(0, 24).map((article, index) => (
+              {articles.slice(0, 9).map((article, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, y: 30 }}
@@ -421,11 +422,11 @@ const News = () => {
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-bold mb-2 text-foreground">
-                  🤖 AI-Powered Smart Analysis
+                  AI-Powered Smart Analysis
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Get personalized insights tailored to your perspective. Our AI analyzes current news
-                  and provides context relevant to your interests.
+                  Get comprehensive news summaries tailored to your perspective. Our AI analyzes current news
+                  and provides educational insights with complete context and actionable takeaways.
                 </p>
               </div>
             </div>
@@ -436,7 +437,7 @@ const News = () => {
                 <label className="block text-sm font-semibold mb-3 text-foreground">
                   Select Your Perspective
                 </label>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                   {perspectives.map((persp) => (
                     <button
                       key={persp.value}

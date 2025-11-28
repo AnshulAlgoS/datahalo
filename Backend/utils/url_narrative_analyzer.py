@@ -63,23 +63,62 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         if meta_date:
             published_date = meta_date.get('content', '') or meta_date.get('datetime', '')
         
-        # Extract article body (improved)
+        # Extract article body (ENHANCED - multiple strategies)
         article_body = []
         
-        # Try article tag first
+        # Strategy 1: Try article tag first
         article_tag = soup.find('article')
         if article_tag:
             paragraphs = article_tag.find_all('p')
-        else:
-            paragraphs = soup.find_all('p')
+            for p in paragraphs:
+                text = p.get_text(strip=True)
+                if len(text) > 40:  # Substantial paragraphs
+                    article_body.append(text)
         
-        for p in paragraphs:
-            text = p.get_text(strip=True)
-            if len(text) > 50:  # Only substantial paragraphs
-                article_body.append(text)
+        # Strategy 2: If no content, try main content areas
+        if len(article_body) < 3:
+            content_areas = soup.find_all(['div'], class_=re.compile(r'(story|article|content|body|post|entry)', re.I))
+            for area in content_areas[:5]:  # Check first 5 matching divs
+                paragraphs = area.find_all('p')
+                for p in paragraphs:
+                    text = p.get_text(strip=True)
+                    if len(text) > 40 and text not in [a for a in article_body]:
+                        article_body.append(text)
         
-        # Get full content (first 15 paragraphs for better context)
-        content = ' '.join(article_body[:15])
+        # Strategy 3: If still no content, get ALL paragraphs
+        if len(article_body) < 3:
+            all_paragraphs = soup.find_all('p')
+            for p in all_paragraphs:
+                text = p.get_text(strip=True)
+                # Filter out navigation, footer, header text
+                if (len(text) > 40 and 
+                    text not in [a for a in article_body] and
+                    not any(skip in text.lower() for skip in ['cookie', 'subscribe', 'newsletter', 'follow us', 'share this'])):
+                    article_body.append(text)
+        
+        # Strategy 4: If still empty, try getting text from specific tags
+        if len(article_body) < 2:
+            # Look for story/article specific containers
+            for tag in ['div', 'section', 'main']:
+                containers = soup.find_all(tag, attrs={'id': re.compile(r'(story|article|content|main)', re.I)})
+                for container in containers:
+                    text = container.get_text(separator=' ', strip=True)
+                    if len(text) > 200:
+                        # Split into sentences
+                        sentences = re.split(r'[.!?]\s+', text)
+                        article_body.extend([s.strip() + '.' for s in sentences if len(s.strip()) > 40][:10])
+                        break
+                if article_body:
+                    break
+        
+        # Get full content (first 20 paragraphs for better context)
+        content = ' '.join(article_body[:20])
+        
+        # If still no content, use description as fallback
+        if not content and description:
+            content = description
+        
+        logger.info(f"INFO: Extracted {len(article_body)} paragraphs, {len(content.split())} words")
         
         # Extract main topic/subject from title and content
         main_topic = _extract_main_topic(title, description or content[:500])
@@ -96,7 +135,17 @@ def extract_article_content(url: str) -> Dict[str, Any]:
         if meta_author:
             author = meta_author.get('content', '')
         
-        logger.info(f"✅ Extracted article: '{title[:60]}...' from {source}")
+        word_count = len(content.split())
+        
+        # Log extraction results
+        if word_count > 0:
+            logger.info(f"SUCCESS: Extracted article: '{title[:60]}...' from {source} ({word_count} words)")
+        else:
+            logger.warning(f"WARNING: Low content extracted from {source}: Only {word_count} words - using description as fallback")
+            # Use description as content if article body extraction failed
+            if description and len(description) > 100:
+                content = description
+                word_count = len(content.split())
         
         return {
             'url': url,
@@ -108,8 +157,9 @@ def extract_article_content(url: str) -> Dict[str, Any]:
             'content': content,
             'keywords': keywords,
             'main_topic': main_topic,
-            'word_count': len(content.split()),
-            'success': True
+            'word_count': word_count,
+            'success': True,
+            'extraction_quality': 'good' if word_count > 200 else 'moderate' if word_count > 50 else 'limited'
         }
         
     except Exception as e:
@@ -141,35 +191,49 @@ def _extract_main_topic(title: str, content: str) -> str:
 
 
 async def analyze_article_with_ai(article: Dict[str, Any], ai_api_key: str) -> Dict[str, Any]:
-    """Use AI to deeply analyze the article content and extract key insights."""
+    """Simple, clear article analysis: what happened, background, and future impact."""
     if not ai_api_key:
         return {}
     
     try:
-        # Build detailed prompt for article analysis
-        prompt = f"""Analyze this news article in detail:
+        # SIMPLIFIED prompt for clear article summary
+        prompt = f"""Analyze this news article and provide a clear, simple summary.
 
+ARTICLE:
 Title: {article.get('title', '')}
 Source: {article.get('source', '')}
-Content: {article.get('content', '')[:2000]}
+Date: {article.get('published_date', 'Unknown')[:10]}
 
-Provide a JSON analysis with:
+Content:
+{article.get('content', '')[:3000]}
+
+Provide analysis in this JSON format:
 
 {{
-  "summary": "concise 2-3 sentence summary",
-  "key_points": ["point 1", "point 2", "point 3"],
-  "main_subjects": ["subject 1", "subject 2"],
-  "political_angle": "describe the political/ideological angle if any",
-  "tone": "Neutral/Supportive/Critical/Alarmist",
-  "credibility_signals": ["signal 1", "signal 2"],
-  "potential_biases": ["bias 1", "bias 2"],
-  "target_audience": "who this article is aimed at",
-  "narrative_framing": "how the story is framed",
-  "missing_context": ["what context is missing"],
-  "questions_raised": ["what questions does this raise"]
+  "what_happened": "Clear summary of the main event or story in 2-3 sentences",
+  
+  "key_facts": [
+    "Important fact 1",
+    "Important fact 2",
+    "Important fact 3",
+    "Important fact 4"
+  ],
+  
+  "background": "What led to this? What's the context and history?",
+  
+  "who_involved": ["Person/organization 1", "Person/organization 2"],
+  
+  "future_impact": {{
+    "on_people": "How will this affect common people?",
+    "on_government": "How will this affect government/policy?",
+    "on_economy": "Economic impact if relevant",
+    "timeline": "When will we see effects?"
+  }},
+  
+  "why_it_matters": "Why should people care about this story?"
 }}
 
-Be specific and cite details from the article."""
+Keep it simple, factual, and easy to understand."""
 
         headers = {
             "Authorization": f"Bearer {ai_api_key}",
@@ -178,13 +242,22 @@ Be specific and cite details from the article."""
 
         payload = {
             "model": "meta/llama-3.1-70b-instruct",
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful news analyst who explains news stories in simple, clear language. Focus on facts: what happened, why it matters, and what comes next."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
             "temperature": 0.3,
-            "top_p": 0.85,
+            "top_p": 0.9,
             "max_tokens": 1500
         }
 
-        logger.info("🤖 Calling AI for article analysis...")
+        logger.info("AI: Calling AI for article analysis...")
         response = requests.post(
             "https://integrate.api.nvidia.com/v1/chat/completions",
             headers=headers,
@@ -200,7 +273,7 @@ Be specific and cite details from the article."""
         json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
             analysis = json.loads(json_match.group(0))
-            logger.info("✅ AI article analysis complete")
+            logger.info("SUCCESS: AI article analysis complete")
             return analysis
         else:
             return json.loads(content)
@@ -316,186 +389,505 @@ def analyze_timeline(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def detect_manipulation(articles: List[Dict[str, Any]], timeline: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Detect potential manipulation indicators."""
+    """Enhanced detection of potential narrative manipulation indicators with deeper analysis."""
     indicators = {
         'coordinated_timing': False,
         'source_clustering': False,
         'sentiment_uniformity': False,
         'sudden_spike': False,
+        'language_uniformity': False,
+        'suspicious_patterns': [],
+        'confidence_score': 0,
         'explanation': []
     }
     
     if len(articles) < 3:
-        indicators['explanation'] = 'Insufficient data for manipulation analysis'
+        indicators['explanation'] = 'Insufficient data for comprehensive manipulation analysis - need at least 3 articles'
+        indicators['confidence_score'] = 0
         return indicators
     
-    # 1. Coordinated Timing Detection
-    # Check if many articles published within short time window
+    manipulation_score = 0
+    max_possible_score = 0
+    
+    # 1. ENHANCED Coordinated Timing Detection
     dates = [a.get('published_date', '') for a in articles if a.get('published_date')]
     if dates:
+        # Check both hourly and daily clustering
         date_hours = defaultdict(int)
+        date_days = defaultdict(int)
+        
         for date_str in dates:
             try:
                 dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 hour_key = dt.strftime('%Y-%m-%d %H:00')
+                day_key = dt.strftime('%Y-%m-%d')
                 date_hours[hour_key] += 1
+                date_days[day_key] += 1
             except:
                 continue
         
-        # If 30%+ articles in same hour
+        max_possible_score += 25
+        
+        # Check hourly clustering (strong indicator)
         max_in_hour = max(date_hours.values()) if date_hours else 0
-        if max_in_hour / len(articles) > 0.3:
+        hour_ratio = max_in_hour / len(articles) if articles else 0
+        
+        if hour_ratio > 0.5:
             indicators['coordinated_timing'] = True
-            indicators['explanation'].append(f"{max_in_hour} articles published in same hour window - possible coordinated release")
+            manipulation_score += 25
+            indicators['explanation'].append(f"CRITICAL: {max_in_hour}/{len(articles)} articles ({int(hour_ratio*100)}%) published within same hour - highly suspicious coordinated release")
+            indicators['suspicious_patterns'].append("Hourly clustering suggests pre-planned media campaign")
+        elif hour_ratio > 0.3:
+            indicators['coordinated_timing'] = True
+            manipulation_score += 15
+            indicators['explanation'].append(f"WARNING: {max_in_hour} articles published in same hour window - possible coordinated timing")
+            indicators['suspicious_patterns'].append("Moderate hourly clustering detected")
+        
+        # Check daily clustering (weaker but still relevant)
+        max_in_day = max(date_days.values()) if date_days else 0
+        day_ratio = max_in_day / len(articles) if articles else 0
+        
+        if day_ratio > 0.7 and len(date_days) == 1:
+            manipulation_score += 10
+            indicators['explanation'].append(f"All {len(articles)} articles published on same day - possible coordinated campaign")
     
-    # 2. Source Clustering Detection
-    # Check if articles dominated by few sources
+    # 2. ENHANCED Source Clustering Detection
     sources = [a.get('source', '') for a in articles if a.get('source')]
     if sources:
         source_counts = Counter(sources)
-        top_source_count = source_counts.most_common(1)[0][1] if source_counts else 0
+        unique_sources = len(source_counts)
+        top_3_sources = sum(count for _, count in source_counts.most_common(3))
         
-        # If one source has 40%+ of articles
-        if top_source_count / len(sources) > 0.4:
+        max_possible_score += 25
+        
+        # Single source domination
+        if unique_sources == 1:
             indicators['source_clustering'] = True
-            indicators['explanation'].append(f"One source ({source_counts.most_common(1)[0][0]}) accounts for {top_source_count}/{len(sources)} articles")
+            manipulation_score += 25
+            indicators['explanation'].append(f"CRITICAL: Only ONE source ({sources[0]}) - no independent verification possible")
+            indicators['suspicious_patterns'].append("Single source narrative - high manipulation risk")
+        elif unique_sources <= 2:
+            indicators['source_clustering'] = True
+            manipulation_score += 20
+            indicators['explanation'].append(f"WARNING: Only {unique_sources} sources - very limited diversity")
+            indicators['suspicious_patterns'].append("Minimal source diversity")
+        else:
+            top_source_ratio = source_counts.most_common(1)[0][1] / len(sources)
+            top_3_ratio = top_3_sources / len(sources) if sources else 0
+            
+            if top_source_ratio > 0.5:
+                indicators['source_clustering'] = True
+                manipulation_score += 15
+                indicators['explanation'].append(f"Source clustering: {source_counts.most_common(1)[0][0]} accounts for {int(top_source_ratio*100)}% of articles")
+                indicators['suspicious_patterns'].append("One source dominates narrative")
+            elif top_3_ratio > 0.75:
+                indicators['source_clustering'] = True
+                manipulation_score += 10
+                indicators['explanation'].append(f"Top 3 sources account for {int(top_3_ratio*100)}% of coverage")
+                indicators['suspicious_patterns'].append("Limited source diversity")
     
-    # 3. Sentiment Uniformity Detection
-    # Check if all articles have same sentiment
+    # 3. ENHANCED Sentiment Uniformity Detection
     sentiments = [t['sentiment'] for t in timeline if t.get('sentiment')]
-    if sentiments:
+    if sentiments and len(sentiments) >= 2:
         sentiment_counts = Counter(sentiments)
-        dominant_sentiment_ratio = sentiment_counts.most_common(1)[0][1] / len(sentiments) if sentiment_counts else 0
+        dominant_sentiment = sentiment_counts.most_common(1)[0]
+        uniformity_ratio = dominant_sentiment[1] / len(sentiments) if sentiments else 0
         
-        # If 80%+ articles have same sentiment
-        if dominant_sentiment_ratio > 0.8:
+        max_possible_score += 20
+        
+        if uniformity_ratio >= 0.95:
             indicators['sentiment_uniformity'] = True
-            indicators['explanation'].append(f"{int(dominant_sentiment_ratio*100)}% of coverage has uniform {sentiment_counts.most_common(1)[0][0]} sentiment")
+            manipulation_score += 20
+            indicators['explanation'].append(f"EXTREME uniformity: {int(uniformity_ratio*100)}% of coverage has {dominant_sentiment[0].lower()} sentiment - suggests coordinated messaging")
+            indicators['suspicious_patterns'].append("Near-total sentiment uniformity across all coverage")
+        elif uniformity_ratio > 0.85:
+            indicators['sentiment_uniformity'] = True
+            manipulation_score += 15
+            indicators['explanation'].append(f"High uniformity: {int(uniformity_ratio*100)}% {dominant_sentiment[0].lower()} sentiment - limited perspective diversity")
+            indicators['suspicious_patterns'].append("Dominant sentiment with minimal dissenting views")
+        elif uniformity_ratio > 0.75:
+            manipulation_score += 8
+            indicators['explanation'].append(f"Moderate uniformity: {int(uniformity_ratio*100)}% {dominant_sentiment[0].lower()} sentiment")
     
-    # 4. Sudden Spike Detection
-    # Check if there's abnormal spike in coverage
-    if timeline and len(timeline) > 2:
+    # 4. ENHANCED Sudden Spike Detection with Statistical Analysis
+    if timeline and len(timeline) >= 3:
         counts = [t['count'] for t in timeline]
         avg_count = sum(counts) / len(counts)
         max_count = max(counts)
         
-        # If spike is 3x average
-        if max_count > avg_count * 3:
+        # Calculate standard deviation for more accurate spike detection
+        variance = sum((x - avg_count) ** 2 for x in counts) / len(counts)
+        std_dev = variance ** 0.5
+        
+        max_possible_score += 15
+        
+        if max_count > avg_count * 5:
             indicators['sudden_spike'] = True
-            indicators['explanation'].append(f"Sudden spike of {max_count} articles on {timeline[counts.index(max_count)]['date']} (3x average)")
+            manipulation_score += 15
+            indicators['explanation'].append(f"EXTREME spike: {max_count} articles on {timeline[counts.index(max_count)]['date']} (5x average) - possible manufactured controversy")
+            indicators['suspicious_patterns'].append("Abnormal coverage surge suggests coordinated push")
+        elif max_count > avg_count * 3:
+            indicators['sudden_spike'] = True
+            manipulation_score += 10
+            indicators['explanation'].append(f"Sudden spike: {max_count} articles on {timeline[counts.index(max_count)]['date']} (3x average)")
+            indicators['suspicious_patterns'].append("Significant coverage spike detected")
+        elif std_dev > 0 and max_count > avg_count + (2 * std_dev):
+            manipulation_score += 5
+            indicators['explanation'].append(f"Statistical outlier detected in coverage pattern")
     
-    # Compile explanation
+    # 5. NEW: Language Uniformity Detection (headline similarity)
+    titles = [a.get('title', '').lower() for a in articles if a.get('title')]
+    if len(titles) >= 5:
+        max_possible_score += 15
+        
+        # Extract common phrases (3+ words)
+        common_phrases = []
+        for title in titles:
+            words = title.split()
+            for i in range(len(words) - 2):
+                phrase = ' '.join(words[i:i+3])
+                if len(phrase) > 15:  # Substantial phrase
+                    common_phrases.append(phrase)
+        
+        if common_phrases:
+            phrase_counts = Counter(common_phrases)
+            most_common_phrase, phrase_freq = phrase_counts.most_common(1)[0]
+            phrase_ratio = phrase_freq / len(titles)
+            
+            if phrase_ratio > 0.4:
+                indicators['language_uniformity'] = True
+                manipulation_score += 15
+                indicators['explanation'].append(f"Identical language: '{most_common_phrase}' appears in {int(phrase_ratio*100)}% of headlines - copy-paste journalism")
+                indicators['suspicious_patterns'].append("Uniform language suggests single talking point source")
+            elif phrase_ratio > 0.25:
+                indicators['language_uniformity'] = True
+                manipulation_score += 10
+                indicators['explanation'].append(f"Repeated phrasing: '{most_common_phrase}' in {int(phrase_ratio*100)}% of headlines")
+                indicators['suspicious_patterns'].append("Similar language patterns across sources")
+    
+    # Calculate confidence score (0-100)
+    if max_possible_score > 0:
+        indicators['confidence_score'] = min(100, int((manipulation_score / max_possible_score) * 100))
+    
+    # Compile final assessment
     if not any([indicators['coordinated_timing'], indicators['source_clustering'], 
-                indicators['sentiment_uniformity'], indicators['sudden_spike']]):
-        indicators['explanation'] = 'No manipulation indicators detected in the data'
+                indicators['sentiment_uniformity'], indicators['sudden_spike'], indicators['language_uniformity']]):
+        indicators['explanation'] = 'No significant manipulation indicators detected - coverage appears organic with healthy diversity'
+        indicators['confidence_score'] = 0
     else:
-        indicators['explanation'] = ' | '.join(indicators['explanation'])
+        if not indicators['explanation']:
+            indicators['explanation'] = 'Analysis complete'
+        else:
+            indicators['explanation'] = ' | '.join(indicators['explanation'])
+    
+    # Add risk level assessment
+    if indicators['confidence_score'] >= 70:
+        indicators['risk_level'] = 'HIGH'
+        indicators['recommendation'] = 'Critical: Multiple strong manipulation indicators present. Cross-check with independent international sources and alternative media.'
+    elif indicators['confidence_score'] >= 40:
+        indicators['risk_level'] = 'MEDIUM'
+        indicators['recommendation'] = 'Caution: Some manipulation patterns detected. Seek additional perspectives and verify key claims independently.'
+    else:
+        indicators['risk_level'] = 'LOW'
+        indicators['recommendation'] = 'Normal: Coverage appears relatively organic. Standard media literacy practices apply.'
     
     return indicators
 
 
 def analyze_source_clustering(articles: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Analyze which journalists and outlets are pushing the same angle."""
+    """Enhanced analysis of source patterns and narrative angles with deeper insights."""
     source_analysis = {
         'total_sources': 0,
+        'unique_sources': 0,
         'top_sources': [],
         'source_distribution': {},
-        'narrative_clusters': []
+        'narrative_clusters': [],
+        'diversity_metrics': {},
+        'source_credibility': {},
+        'geographic_distribution': {}
     }
     
     if not articles:
         return source_analysis
     
-    # Count sources
+    # Count and categorize sources
     sources = [a.get('source', 'Unknown') for a in articles]
     source_counts = Counter(sources)
     
-    source_analysis['total_sources'] = len(source_counts)
+    source_analysis['total_sources'] = len(sources)
+    source_analysis['unique_sources'] = len(source_counts)
     source_analysis['top_sources'] = source_counts.most_common(10)
     source_analysis['source_distribution'] = dict(source_counts)
     
-    # Detect narrative clusters (sources pushing similar angles)
-    # Group by sentiment/keywords
-    negative_sources = []
-    positive_sources = []
-    neutral_sources = []
+    # Calculate diversity metrics
+    if len(sources) > 0:
+        # Herfindahl-Hirschman Index (measure of concentration, 0-1)
+        # Lower = more diverse, Higher = more concentrated
+        market_shares = [count / len(sources) for count in source_counts.values()]
+        hhi = sum(share ** 2 for share in market_shares)
+        
+        source_analysis['diversity_metrics'] = {
+            'concentration_index': round(hhi, 3),
+            'diversity_score': round((1 - hhi) * 100, 1),  # Convert to 0-100 scale
+            'interpretation': (
+                'Excellent diversity' if hhi < 0.15 else
+                'Good diversity' if hhi < 0.25 else
+                'Moderate diversity' if hhi < 0.40 else
+                'Low diversity - concentrated sources' if hhi < 0.60 else
+                'Very low diversity - possible echo chamber'
+            ),
+            'unique_to_total_ratio': round(len(source_counts) / len(sources), 2)
+        }
     
-    negative_keywords = ['crisis', 'scandal', 'controversy', 'issue', 'problem']
-    positive_keywords = ['success', 'achievement', 'growth', 'progress']
+    # Enhanced narrative clustering with more sophisticated analysis
+    negative_sources = defaultdict(list)
+    positive_sources = defaultdict(list)
+    neutral_sources = defaultdict(list)
+    alarmist_sources = defaultdict(list)
+    dismissive_sources = defaultdict(list)
+    
+    # Expanded keyword sets for better detection
+    negative_keywords = ['crisis', 'scandal', 'controversy', 'issue', 'problem', 'concern', 'critical', 
+                         'failure', 'threat', 'danger', 'risk', 'alarming', 'troubling', 'devastating']
+    positive_keywords = ['success', 'achievement', 'growth', 'progress', 'improve', 'win', 'victory', 
+                         'breakthrough', 'triumph', 'advancement', 'innovation', 'excellence']
+    alarmist_keywords = ['urgent', 'crisis', 'emergency', 'catastrophe', 'disaster', 'shocking', 'alarming']
+    dismissive_keywords = ['overblown', 'exaggerated', 'myth', 'false alarm', 'nothing to see']
     
     for article in articles:
-        title_lower = article.get('title', '').lower()
+        title = article.get('title', '') or ''
+        description = article.get('description', '') or ''
+        title_lower = (title + ' ' + description).lower()
         source = article.get('source', 'Unknown')
         
-        if any(k in title_lower for k in negative_keywords):
-            negative_sources.append(source)
-        elif any(k in title_lower for k in positive_keywords):
-            positive_sources.append(source)
+        # Count keyword matches for more accurate classification
+        neg_count = sum(1 for k in negative_keywords if k in title_lower)
+        pos_count = sum(1 for k in positive_keywords if k in title_lower)
+        alarm_count = sum(1 for k in alarmist_keywords if k in title_lower)
+        dismiss_count = sum(1 for k in dismissive_keywords if k in title_lower)
+        
+        # Classify based on dominant sentiment
+        if alarm_count >= 2:
+            alarmist_sources[source].append(title[:60])
+        elif dismiss_count >= 1:
+            dismissive_sources[source].append(title[:60])
+        elif neg_count > pos_count and neg_count >= 1:
+            negative_sources[source].append(title[:60])
+        elif pos_count > neg_count and pos_count >= 1:
+            positive_sources[source].append(title[:60])
         else:
-            neutral_sources.append(source)
+            neutral_sources[source].append(title[:60])
+    
+    # Build narrative clusters with examples
+    if alarmist_sources:
+        source_analysis['narrative_clusters'].append({
+            'angle': 'Alarmist/Sensational',
+            'description': 'Using urgent, crisis language to amplify importance',
+            'sources': list(alarmist_sources.keys()),
+            'count': sum(len(v) for v in alarmist_sources.values()),
+            'examples': [titles[0] for titles in list(alarmist_sources.values())[:3]],
+            'manipulation_risk': 'High - emotional language designed to provoke reaction'
+        })
     
     if negative_sources:
         source_analysis['narrative_clusters'].append({
             'angle': 'Negative/Critical',
-            'sources': list(set(negative_sources)),
-            'count': len(negative_sources)
+            'description': 'Emphasizing problems, failures, or concerns',
+            'sources': list(negative_sources.keys()),
+            'count': sum(len(v) for v in negative_sources.values()),
+            'examples': [titles[0] for titles in list(negative_sources.values())[:3]],
+            'manipulation_risk': 'Medium - may be justified criticism or manufactured negativity'
         })
     
     if positive_sources:
         source_analysis['narrative_clusters'].append({
             'angle': 'Positive/Supportive',
-            'sources': list(set(positive_sources)),
-            'count': len(positive_sources)
+            'description': 'Highlighting achievements, progress, or success',
+            'sources': list(positive_sources.keys()),
+            'count': sum(len(v) for v in positive_sources.values()),
+            'examples': [titles[0] for titles in list(positive_sources.values())[:3]],
+            'manipulation_risk': 'Medium - may be genuine good news or promotional content'
+        })
+    
+    if dismissive_sources:
+        source_analysis['narrative_clusters'].append({
+            'angle': 'Dismissive/Minimizing',
+            'description': 'Downplaying significance or contradicting other narratives',
+            'sources': list(dismissive_sources.keys()),
+            'count': sum(len(v) for v in dismissive_sources.values()),
+            'examples': [titles[0] for titles in list(dismissive_sources.values())[:3]],
+            'manipulation_risk': 'Medium - either debunking or defensive spin'
         })
     
     if neutral_sources:
         source_analysis['narrative_clusters'].append({
             'angle': 'Neutral/Factual',
-            'sources': list(set(neutral_sources)),
-            'count': len(neutral_sources)
+            'description': 'Balanced reporting without clear emotional framing',
+            'sources': list(neutral_sources.keys()),
+            'count': sum(len(v) for v in neutral_sources.values()),
+            'examples': [titles[0] for titles in list(neutral_sources.values())[:3]],
+            'manipulation_risk': 'Low - appears objective'
         })
+    
+    # Identify potential echo chambers (sources only in one cluster)
+    source_to_clusters = defaultdict(set)
+    for cluster in source_analysis['narrative_clusters']:
+        for source in cluster['sources']:
+            source_to_clusters[source].add(cluster['angle'])
+    
+    echo_chamber_sources = [s for s, clusters in source_to_clusters.items() if len(clusters) == 1]
+    balanced_sources = [s for s, clusters in source_to_clusters.items() if len(clusters) > 1]
+    
+    source_analysis['source_credibility'] = {
+        'echo_chamber_sources': echo_chamber_sources[:10],
+        'balanced_sources': balanced_sources[:10],
+        'credibility_note': f"{len(balanced_sources)} sources show multiple perspectives vs {len(echo_chamber_sources)} show single narrative"
+    }
     
     return source_analysis
 
 
 def analyze_sentiment_map(articles: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Map how sentiment changes across platforms and time."""
+    """Enhanced sentiment analysis mapping across platforms, time, and intensity with scoring."""
     sentiment_map = {
         'by_source': {},
         'by_date': {},
-        'overall': {'positive': 0, 'negative': 0, 'neutral': 0}
+        'overall': {'positive': 0, 'negative': 0, 'neutral': 0, 'mixed': 0},
+        'intensity_scores': {},
+        'emotional_trajectory': [],
+        'sentiment_shifts': []
     }
     
-    negative_keywords = ['crisis', 'scandal', 'controversy', 'issue', 'problem', 'concern', 'critical', 'failure']
-    positive_keywords = ['success', 'achievement', 'growth', 'progress', 'improve', 'win', 'victory', 'breakthrough']
+    # Expanded and weighted keyword sets
+    negative_keywords = {
+        'strong': ['crisis', 'scandal', 'disaster', 'catastrophe', 'devastating', 'alarming', 'shocking', 'outrage'],
+        'moderate': ['controversy', 'issue', 'problem', 'concern', 'critical', 'failure', 'threat', 'danger'],
+        'mild': ['question', 'doubt', 'challenge', 'difficulty', 'setback']
+    }
+    
+    positive_keywords = {
+        'strong': ['breakthrough', 'triumph', 'revolutionary', 'excellent', 'outstanding', 'phenomenal'],
+        'moderate': ['success', 'achievement', 'growth', 'progress', 'improve', 'win', 'victory'],
+        'mild': ['better', 'good', 'positive', 'forward', 'advance']
+    }
     
     for article in articles:
-        title_lower = article.get('title', '').lower() + ' ' + article.get('description', '').lower()
-        source = article.get('source', 'Unknown')
+        title = article.get('title', '') or ''
+        description = article.get('description', '') or ''
+        text_lower = (title + ' ' + description).lower().strip()
+        source = article.get('source', '') or 'Unknown'
         date = article.get('published_date', '')[:10] if article.get('published_date') else 'Unknown'
         
-        # Determine sentiment
-        neg_count = sum(1 for k in negative_keywords if k in title_lower)
-        pos_count = sum(1 for k in positive_keywords if k in title_lower)
+        # Calculate sentiment with intensity scoring
+        neg_score = 0
+        pos_score = 0
         
-        if neg_count > pos_count:
+        # Weight negative sentiment
+        neg_score += sum(3 for k in negative_keywords['strong'] if k in text_lower)
+        neg_score += sum(2 for k in negative_keywords['moderate'] if k in text_lower)
+        neg_score += sum(1 for k in negative_keywords['mild'] if k in text_lower)
+        
+        # Weight positive sentiment
+        pos_score += sum(3 for k in positive_keywords['strong'] if k in text_lower)
+        pos_score += sum(2 for k in positive_keywords['moderate'] if k in text_lower)
+        pos_score += sum(1 for k in positive_keywords['mild'] if k in text_lower)
+        
+        # Determine sentiment category and intensity
+        if neg_score > 0 and pos_score > 0:
+            sentiment = 'mixed'
+            intensity = min(10, neg_score + pos_score)
+        elif neg_score > pos_score:
             sentiment = 'negative'
-        elif pos_count > neg_count:
+            intensity = min(10, neg_score)
+        elif pos_score > neg_score:
             sentiment = 'positive'
+            intensity = min(10, pos_score)
         else:
             sentiment = 'neutral'
+            intensity = 0
         
-        # Update maps
+        # Update source-based map with intensity
         if source not in sentiment_map['by_source']:
-            sentiment_map['by_source'][source] = {'positive': 0, 'negative': 0, 'neutral': 0, 'total': 0}
+            sentiment_map['by_source'][source] = {
+                'positive': 0, 'negative': 0, 'neutral': 0, 'mixed': 0,
+                'total': 0, 'avg_intensity': 0, 'intensity_sum': 0
+            }
+        
         sentiment_map['by_source'][source][sentiment] += 1
         sentiment_map['by_source'][source]['total'] += 1
+        sentiment_map['by_source'][source]['intensity_sum'] += intensity
+        sentiment_map['by_source'][source]['avg_intensity'] = round(
+            sentiment_map['by_source'][source]['intensity_sum'] / sentiment_map['by_source'][source]['total'], 1
+        )
         
+        # Update date-based map
         if date not in sentiment_map['by_date']:
-            sentiment_map['by_date'][date] = {'positive': 0, 'negative': 0, 'neutral': 0}
-        sentiment_map['by_date'][date][sentiment] += 1
+            sentiment_map['by_date'][date] = {
+                'positive': 0, 'negative': 0, 'neutral': 0, 'mixed': 0,
+                'avg_intensity': 0, 'intensity_sum': 0, 'count': 0
+            }
         
+        sentiment_map['by_date'][date][sentiment] += 1
+        sentiment_map['by_date'][date]['intensity_sum'] += intensity
+        sentiment_map['by_date'][date]['count'] += 1
+        sentiment_map['by_date'][date]['avg_intensity'] = round(
+            sentiment_map['by_date'][date]['intensity_sum'] / sentiment_map['by_date'][date]['count'], 1
+        )
+        
+        # Update overall
         sentiment_map['overall'][sentiment] += 1
+        
+        # Track intensity by article
+        if intensity > 0:
+            if source not in sentiment_map['intensity_scores']:
+                sentiment_map['intensity_scores'][source] = []
+            sentiment_map['intensity_scores'][source].append({
+                'title': title[:60],
+                'sentiment': sentiment,
+                'intensity': intensity,
+                'date': date
+            })
+    
+    # Calculate emotional trajectory over time
+    sorted_dates = sorted(sentiment_map['by_date'].keys())
+    for date in sorted_dates:
+        day_data = sentiment_map['by_date'][date]
+        sentiment_map['emotional_trajectory'].append({
+            'date': date,
+            'dominant_sentiment': max(
+                [(k, v) for k, v in day_data.items() if k in ['positive', 'negative', 'neutral', 'mixed']],
+                key=lambda x: x[1],
+                default=('neutral', 0)
+            )[0],
+            'intensity': day_data['avg_intensity'],
+            'article_count': day_data['count']
+        })
+    
+    # Detect sentiment shifts (day-to-day changes)
+    for i in range(1, len(sentiment_map['emotional_trajectory'])):
+        prev = sentiment_map['emotional_trajectory'][i-1]
+        curr = sentiment_map['emotional_trajectory'][i]
+        
+        if prev['dominant_sentiment'] != curr['dominant_sentiment']:
+            sentiment_map['sentiment_shifts'].append({
+                'from_date': prev['date'],
+                'to_date': curr['date'],
+                'shift': f"{prev['dominant_sentiment']} → {curr['dominant_sentiment']}",
+                'intensity_change': round(curr['intensity'] - prev['intensity'], 1)
+            })
+    
+    # Calculate overall sentiment metrics
+    total_articles = sum(sentiment_map['overall'].values())
+    if total_articles > 0:
+        sentiment_map['overall_metrics'] = {
+            'positive_pct': round((sentiment_map['overall']['positive'] / total_articles) * 100, 1),
+            'negative_pct': round((sentiment_map['overall']['negative'] / total_articles) * 100, 1),
+            'neutral_pct': round((sentiment_map['overall']['neutral'] / total_articles) * 100, 1),
+            'mixed_pct': round((sentiment_map['overall']['mixed'] / total_articles) * 100, 1),
+            'polarization_index': round(abs(
+                (sentiment_map['overall']['positive'] - sentiment_map['overall']['negative']) / total_articles
+            ), 2)
+        }
     
     return sentiment_map
 
@@ -609,25 +1001,25 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         Complete analysis including AI insights, timeline, manipulation detection, sentiment mapping, and source clustering
     """
     try:
-        logger.info(f"🔍 Starting comprehensive URL narrative analysis for: {url}")
+        logger.info(f"SEARCH: Starting comprehensive URL narrative analysis for: {url}")
         
         # Step 1: Extract article content from URL
-        logger.info("📄 Step 1: Extracting article content...")
+        logger.info("FILE: Step 1: Extracting article content...")
         original_article = extract_article_content(url)
         
         if not original_article.get("success") or not original_article.get("title"):
             raise ValueError(f"Could not extract article content from URL: {original_article.get('error', 'Unknown error')}")
         
-        logger.info(f"✅ Article extracted: '{original_article['title'][:60]}...' ({original_article.get('word_count', 0)} words)")
+        logger.info(f"SUCCESS: Article extracted: '{original_article['title'][:60]}...' ({original_article.get('word_count', 0)} words)")
         
         # Step 2: AI Analysis of the original article
-        logger.info("🤖 Step 2: Performing AI analysis of article content...")
+        logger.info("AI: Step 2: Performing AI analysis of article content...")
         ai_analysis = await analyze_article_with_ai(original_article, ai_api_key)
         
         # Step 3: Find related articles across different outlets
-        logger.info(f"🔎 Step 3: Searching for related articles (last {days} days)...")
+        logger.info(f"FIND: Step 3: Searching for related articles (last {days} days)...")
         related_articles = find_related_articles(original_article, days)
-        logger.info(f"✅ Found {len(related_articles)} related articles")
+        logger.info(f"SUCCESS: Found {len(related_articles)} related articles")
         
         # Combine original with related articles
         all_articles = [original_article] + related_articles
@@ -637,7 +1029,7 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         timeline = analyze_timeline(all_articles)
         
         # Step 5: Detect manipulation indicators
-        logger.info("🔍 Step 5: Detecting manipulation indicators...")
+        logger.info("SEARCH: Step 5: Detecting manipulation indicators...")
         manipulation_indicators = detect_manipulation(all_articles, timeline)
         
         # Step 6: Analyze sentiment mapping
@@ -645,11 +1037,11 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         sentiment_map = analyze_sentiment_map(all_articles)
         
         # Step 7: Analyze source clustering
-        logger.info("📰 Step 7: Analyzing source clusters and narrative angles...")
+        logger.info("NEWS: Step 7: Analyzing source clusters and narrative angles...")
         source_clustering = analyze_source_clustering(all_articles)
         
         # Step 8: Compile comprehensive analysis with clear explanations
-        logger.info("📊 Step 8: Compiling comprehensive analysis...")
+        logger.info("STATS: Step 8: Compiling comprehensive analysis...")
         
         # Build clear narrative explanations
         coverage_scale = len(all_articles)
@@ -728,19 +1120,19 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
             "manipulation_indicators": {
                 **manipulation_indicators,
                 "overall_assessment": (
-                    "⚠️ Multiple manipulation indicators detected" if sum([
+                    "WARNING: Multiple manipulation indicators detected" if sum([
                         manipulation_indicators.get('coordinated_timing', False),
                         manipulation_indicators.get('source_clustering', False),
                         manipulation_indicators.get('sentiment_uniformity', False),
                         manipulation_indicators.get('sudden_spike', False)
                     ]) >= 2 else
-                    "⚠️ Some manipulation indicators present" if any([
+                    "WARNING: Some manipulation indicators present" if any([
                         manipulation_indicators.get('coordinated_timing', False),
                         manipulation_indicators.get('source_clustering', False),
                         manipulation_indicators.get('sentiment_uniformity', False),
                         manipulation_indicators.get('sudden_spike', False)
                     ]) else
-                    "✅ No significant manipulation indicators detected"
+                    "SUCCESS: No significant manipulation indicators detected"
                 )
             },
             
@@ -799,7 +1191,7 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         logger.info("📦 Step 9: Generating export data...")
         export_data = generate_export_data(analysis_result)
         
-        logger.info(f"✅ URL narrative analysis complete! {len(all_articles)} articles analyzed across {source_clustering.get('total_sources', 0)} sources")
+        logger.info(f"SUCCESS: URL narrative analysis complete! {len(all_articles)} articles analyzed across {source_clustering.get('total_sources', 0)} sources")
         
         return {
             "status": "success",
@@ -809,7 +1201,7 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         
     except Exception as e:
         import traceback
-        logger.error(f"❌ URL narrative analysis failed: {str(e)}")
+        logger.error(f"ERROR: URL narrative analysis failed: {str(e)}")
         logger.error(traceback.format_exc())
         return {
             "status": "error",

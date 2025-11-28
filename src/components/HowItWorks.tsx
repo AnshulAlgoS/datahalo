@@ -164,7 +164,7 @@ const HowItWorks = () => {
           <div className="grid md:grid-cols-4 gap-6">
             {[
               {
-                title: "📰 General Public",
+                title: "NEWS: General Public",
                 desc: "Understand media bias and identify manipulation"
               },
               {
@@ -201,12 +201,12 @@ const HowItWorks = () => {
         >
           <div className="inline-flex flex-wrap items-center justify-center gap-4">
             {[
-              "✅ AI-Powered Analysis",
-              "✅ Real-Time Updates",
-              "✅ Manipulation Detection",
-              "✅ Export for Research",
-              "✅ Mobile Responsive",
-              "✅ Open Source"
+              "CHECK: AI-Powered Analysis",
+              "CHECK: Real-Time Updates",
+              "CHECK: Manipulation Detection",
+              "CHECK: Export for Research",
+              "CHECK: Mobile Responsive",
+              "CHECK: Open Source"
             ].map((feature, idx) => (
               <div
                 key={idx}
