@@ -547,20 +547,24 @@ async def analyze_narrative(request: NarrativeRequest):
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        # IMPROVED: More flexible search strategy
-        # Strategy 1: Try exact phrase match first
+        # OPTIMIZED: Quick database check, then go straight to SERP if empty
+        # Strategy 1: Quick exact phrase match (limit 20 for speed)
         articles = list(news_collection.find({
             "$or": [
                 {"title": {"$regex": topic, "$options": "i"}},
                 {"description": {"$regex": topic, "$options": "i"}}
             ],
             "fetchedAt": {"$gte": start_date, "$lte": end_date}
-        }).sort("fetchedAt", -1).limit(100))
+        }).sort("fetchedAt", -1).limit(20))
 
-        logger.info(f"STATS: Strategy 1 (exact phrase): Found {len(articles)} articles")
+        logger.info(f"STATS: Database quick check: Found {len(articles)} articles")
+        
+        # If database has few articles, skip other database strategies and go to SERP directly
+        if len(articles) < 5 and SERP_API_KEY:
+            logger.info(f"OPTIMIZE: Skipping database strategies, going directly to SERP API for fresh data...")
 
-        # Strategy 2: If not enough, try keyword matching with better relevance
-        if len(articles) < 10:
+        # Strategy 2: Only if we have some articles but not enough, try keyword matching
+        elif len(articles) >= 5 and len(articles) < 10:
             # Extract keywords but keep minimum word length reasonable
             keywords = [word.lower() for word in topic.split() if len(word) > 2]
             
@@ -606,8 +610,8 @@ async def analyze_narrative(request: NarrativeRequest):
             if len(keywords) >= 2:
                 logger.info(f"SUCCESS: Using AND logic for {keywords} - requires ALL keywords in article")
 
-        # Strategy 3: If still not enough, get recent articles from related categories
-        if len(articles) < 5:
+        # Strategy 3: Skip category search for speed - go straight to SERP
+        # if len(articles) < 5:
             # Determine likely category from topic
             category_map = {
                 "election": "general",
@@ -656,10 +660,10 @@ async def analyze_narrative(request: NarrativeRequest):
                         articles.append(article)
                         seen_urls.add(article["url"])
 
-            logger.info(f"STATS: Strategy 3 (category): Total articles now {len(articles)}")
+            # logger.info(f"STATS: Strategy 3 (category): Total articles now {len(articles)}")
 
-        # Strategy 4: If STILL not enough, fetch from NewsAPI
-        if len(articles) < 5:
+        # Strategy 4: Skip NewsAPI (often fails) - go straight to SERP
+        # if len(articles) < 5:
             logger.info(f"STATS: Strategy 4: Fetching from NewsAPI for '{topic}'...")
 
             try:
@@ -737,10 +741,11 @@ async def analyze_narrative(request: NarrativeRequest):
                     logger.error(f"ERROR: NewsAPI HTTP error: {response.status_code} - {response.text[:200]}")
             except Exception as e:
                 logger.error(f"ERROR: NewsAPI fetch failed: {str(e)}", exc_info=True)
+                pass  # Continue to SERP API
 
-        # Strategy 5: If STILL insufficient, use SERP API to scrape Google News
-        if len(articles) < 3 and SERP_API_KEY:
-            logger.info(f"STATS: Strategy 5: Scraping Google News via SERP API for '{topic}'...")
+        # OPTIMIZED Strategy: Use SERP API directly for fresh, comprehensive data
+        if len(articles) < 10 and SERP_API_KEY:
+            logger.info(f"OPTIMIZE: Fetching fresh data from Google News via SERP API for '{topic}'...")
             
             try:
                 # Use SERP API to search Google News
@@ -751,7 +756,7 @@ async def analyze_narrative(request: NarrativeRequest):
                     "q": topic,
                     "gl": "in",  # India region
                     "hl": "en",  # English language
-                    "num": 50
+                    "num": 100  # Increased to get more comprehensive results
                 }
                 
                 logger.info(f"SEARCH: Searching Google News for: '{topic}'")
@@ -869,119 +874,40 @@ async def analyze_narrative(request: NarrativeRequest):
             for a in article_details[:20]  # Send full details for first 20 articles
         ])
 
-        # INVESTIGATIVE AI prompt - expose manipulation, government actions, and hidden truths
-        prompt = f"""You are an investigative journalist exposing media manipulation and government actions to wake up citizens.
-
-INVESTIGATION: "{topic}"
+        # STREAMLINED AI prompt for faster response with key insights
+        prompt = f"""Analyze media coverage of "{topic}" to detect narrative patterns and manipulation.
 
 DATA: {len(articles)} articles from {days} days
 
-ARTICLES:
+ARTICLES (most recent):
 {articles_text}
 
-YOUR MISSION - EXPOSE THE TRUTH:
-
-1. **WHAT THEY'RE FEEDING YOU**: What narrative is media pushing? (cite articles)
-2. **HOW THEY MANIPULATE**: What techniques are being used? Emotional language? Fear? Distraction?
-3. **WHAT GOVERNMENT IS DOING**: What actions is govt taking on this? Laws? Policies? Silence?
-4. **WHAT'S BEING HIDDEN**: What are they NOT telling you? What's being overshadowed?
-5. **WHO BENEFITS**: Who profits from this narrative? Follow the money/power.
-6. **THE REAL STORY**: What's actually happening vs what media wants you to believe?
-
-Provide investigative JSON:
+Provide concise JSON analysis:
 
 {{
-  "media_feeding_you": {{
-    "main_narrative": "What story is media feeding you? (cite Articles #X, #Y with quotes)",
-    "emotional_angle": "Fear/Hope/Anger/Apathy - How are they making you feel?",
-    "key_phrases": ["Repeated phrase from Articles #X, #Y", "Another manipulative phrase"],
-    "spin_detected": "How is reality being twisted? Evidence from Articles #X, #Y",
-    "coverage_level": "Heavy/Buried/Ignored - with evidence"
-  }},
-  
-  "manipulation_tactics": {{
-    "emotional_manipulation": "Fear-mongering? Hero worship? Cite Articles #X, #Y",
-    "distraction_technique": "What big stories are drowning this out? Articles #X, #Y",
-    "language_control": "Loaded words used: 'quotes from Articles #X, #Y'",
-    "timing_games": "Why now? What else is happening? Cite evidence",
-    "source_coordination": "Are outlets pushing same story? Articles #X, #Y, #Z same day/phrases",
-    "omission_tactic": "What facts are being left out? Compare Articles #X vs #Y"
-  }},
-  
-  "government_actions": {{
-    "what_govt_doing": "Actual government actions mentioned in Articles #X, #Y",
-    "policies_laws": "New laws/policies/decisions? Cite Articles #X, #Y",
-    "official_statements": "What government said (Articles #X, #Y) vs reality",
-    "enforcement_actions": "Police/courts/agencies involved? Articles #X, #Y",
-    "govt_silence": "What is government NOT saying? What's absent from all articles?",
-    "political_angle": "Which party/leader benefits? Evidence from Articles #X, #Y"
-  }},
-  
-  "whats_hidden": {{
-    "buried_facts": "Important data/facts only in Article #X but ignored elsewhere",
-    "missing_voices": "Who is NOT being quoted? Which perspectives absent?",
-    "convenient_timing": "What OTHER stories are overshadowing this? When did they break?",
-    "censored_angles": "What aspects of '{topic}' are NOT being discussed at all?",
-    "follow_the_money": "Financial interests not mentioned? Cite or infer"
-  }},
-  
-  "who_benefits": {{
-    "power_beneficiary": "Which politician/party/leader benefits from this narrative?",
-    "financial_beneficiary": "Which companies/industries profit?",
-    "evidence": "Cite Articles #X, #Y showing connections",
-    "cui_bono_analysis": "Follow the money/power - who REALLY gains?"
-  }},
-  
-  "reality_vs_narrative": {{
-    "what_media_says": "Official narrative from Articles #X, #Y (with quotes)",
-    "what_they_hide": "Reality not being told - evidence from Articles #X, #Y",
-    "the_real_story": "What's ACTUALLY happening behind the narrative?",
-    "why_the_spin": "Why is media spinning it this way? Who benefits?"
-  }},
-  
+  "main_narrative": "Brief summary of what media is saying (2-3 sentences, cite Article #X, #Y)",
+  "manipulation_detected": "Yes/No - brief explanation with evidence from specific articles",
+  "key_phrases": ["Repeated phrase 1", "Repeated phrase 2", "Repeated phrase 3"],
   "timeline": [
-    {{
-      "date": "YYYY-MM-DD",
-      "count": number,
-      "sentiment": "sentiment",
-      "keyEvents": ["Headline from Article #X", "Headline from Article #Y"]
-    }}
+    {{"date": "YYYY-MM-DD", "count": 5, "sentiment": "Negative/Positive/Neutral", "keyEvents": ["Headline 1", "Headline 2"]}}
   ],
-  
   "keyNarratives": [
-    {{
-      "narrative": "Storyline with quoted phrases from articles",
-      "frequency": number,
-      "sources": ["Source (Article #X)", "Source (Article #Y)"],
-      "exampleHeadlines": ["Article #X: 'headline'", "Article #Y: 'headline'"]
-    }}
+    {{"narrative": "Main storyline", "frequency": 15, "sources": ["Source1", "Source2"], "exampleHeadlines": ["Headline from Article #X"]}}
   ],
-  
   "manipulation_indicators": {{
     "coordinated_timing": true/false,
     "source_clustering": true/false,
     "sentiment_uniformity": true/false,
     "sudden_spike": true/false,
-    "explanation": "Specific evidence with article numbers"
+    "explanation": "Brief evidence"
   }},
-  
   "context": {{
-    "majorEvents": ["Event from Article #X", "Event from Article #Y"],
-    "relatedTopics": ["Topic with Article #", "Topic with Article #"],
-    "potentialTriggers": ["Trigger from Article #X"],
-    "missingPerspectives": ["Perspective absent from all articles"]
+    "majorEvents": ["Key event 1", "Key event 2"],
+    "relatedTopics": ["Topic 1", "Topic 2"]
   }}
 }}
 
-EXPOSE EVERYTHING:
-- CITE article numbers for EVERY claim
-- QUOTE exact phrases showing manipulation
-- NAME sources showing coordination
-- Show government actions/inactions with evidence
-- Reveal who BENEFITS (power/money)
-- Help citizens SEE THROUGH THE LIES
-
-CRITICAL: Return ONLY the JSON object above. No markdown, no ```json blocks, no text before or after. Start with {{ and end with }}. Pure JSON only."""
+Be concise. Return ONLY valid JSON. No markdown, no text outside JSON."""
 
         # Call AI
         try:
@@ -995,16 +921,16 @@ CRITICAL: Return ONLY the JSON object above. No markdown, no ```json blocks, no 
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a data analyst. You MUST return ONLY valid JSON. No markdown, no explanations, no text outside JSON. Start with { and end with }. Every response must be pure JSON."
+                        "content": "You are a data analyst. Return ONLY valid JSON. No markdown, no text outside JSON. Be concise."
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                "temperature": 0.2,
+                "temperature": 0.3,
                 "top_p": 0.9,
-                "max_tokens": 4000
+                "max_tokens": 2000  # Reduced for faster response
             }
 
             logger.info("AI: Calling AI for analysis...")
@@ -1080,20 +1006,22 @@ CRITICAL: Return ONLY the JSON object above. No markdown, no ```json blocks, no 
                     "timeframe": f"{days} days",
                     "totalArticles": len(articles),
                     
-                    # INVESTIGATIVE ANALYSIS - Expose manipulation & government
-                    "media_feeding_you": analysis_data.get("media_feeding_you", {}),
-                    "manipulation_tactics": analysis_data.get("manipulation_tactics", {}),
-                    "government_actions": analysis_data.get("government_actions", {}),
-                    "whats_hidden": analysis_data.get("whats_hidden", {}),
-                    "who_benefits": analysis_data.get("who_benefits", {}),
-                    "reality_check": analysis_data.get("reality_vs_narrative", {}),  # Rename for frontend compatibility
-                    
-                    # Existing fields
-                    "narrativePattern": analysis_data.get("narrativePattern", {}),
+                    # Streamlined analysis
+                    "main_narrative": analysis_data.get("main_narrative", ""),
+                    "manipulation_detected": analysis_data.get("manipulation_detected", "Unknown"),
+                    "key_phrases": analysis_data.get("key_phrases", []),
                     "timeline": analysis_data.get("timeline", [])[:8],
                     "keyNarratives": analysis_data.get("keyNarratives", [])[:5],
                     "manipulation_indicators": analysis_data.get("manipulation_indicators", {}),
-                    "context": analysis_data.get("context", {})
+                    "context": analysis_data.get("context", {}),
+                    
+                    # Keep for compatibility
+                    "narrativePattern": {
+                        "rising": len(articles) > 20,
+                        "trend": "Rising" if len(articles) > 30 else "Stable",
+                        "sentiment": "Mixed",
+                        "intensity": min(100, len(articles) * 3)
+                    }
                 }
             }
 
