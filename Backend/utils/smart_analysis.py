@@ -236,11 +236,12 @@ If articles are old or not India-focused, acknowledge this and work with what's 
         # Call NVIDIA API
         logger.info(f"Starting AI analysis for {pov}")
         
-        # Use shorter timeout and retry logic
-        max_retries = 2
+        # Extended timeout and retry logic for comprehensive analysis
+        max_retries = 3
         for attempt in range(max_retries):
             try:
-                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} - calling NVIDIA API...")
+                timeout_seconds = 300  # 5 minutes for comprehensive analysis
+                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} - calling NVIDIA API (timeout: {timeout_seconds}s)...")
                 
                 response = ai_client.chat.completions.create(
                     model="qwen/qwen2.5-coder-32b-instruct",
@@ -255,29 +256,31 @@ If articles are old or not India-focused, acknowledge this and work with what's 
                         }
                     ],
                     temperature=0.4,
-                    max_tokens=4500,  # Reduced from 6000 to speed up
+                    max_tokens=4500,
                     top_p=0.9,
-                    timeout=120  # 120 second timeout
+                    timeout=timeout_seconds
                 )
+                logger.info("AI: Request completed successfully!")
                 break  # Success
                 
             except Exception as e:
                 error_str = str(e).lower()
                 if 'timeout' in error_str or 'timed out' in error_str:
                     if attempt < max_retries - 1:
-                        wait_time = (attempt + 1) * 5
-                        logger.warning(f"AI: Timeout on attempt {attempt + 1}, retrying in {wait_time}s...")
+                        wait_time = (attempt + 1) * 10
+                        logger.warning(f"AI: Timeout on attempt {attempt + 1}/{max_retries}, retrying in {wait_time}s...")
                         import time
                         time.sleep(wait_time)
                     else:
-                        logger.error("AI: All retry attempts failed - using fallback")
+                        logger.error(f"AI: All {max_retries} attempts timed out - using fallback analysis")
                         return generate_fallback_analysis(articles_to_analyze, pov)
                 else:
                     logger.error(f"AI: Error on attempt {attempt + 1}: {str(e)}")
                     if attempt < max_retries - 1:
                         import time
-                        time.sleep(3)
+                        time.sleep(5)
                     else:
+                        logger.error("AI: All retry attempts failed - using fallback")
                         return generate_fallback_analysis(articles_to_analyze, pov)
 
         analysis_content = response.choices[0].message.content.strip()

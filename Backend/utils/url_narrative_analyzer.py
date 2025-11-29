@@ -259,12 +259,12 @@ Keep it simple, factual, and easy to understand."""
 
         logger.info("AI: Calling AI for article analysis...")
         
-        # Retry logic with exponential backoff
-        max_retries = 2
+        # Extended timeout and retry logic
+        max_retries = 3
         for attempt in range(max_retries):
             try:
-                timeout_seconds = 120  # Increased from 60 to 120 seconds
-                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} with {timeout_seconds}s timeout")
+                timeout_seconds = 300  # 5 minutes for thorough article analysis
+                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} (timeout: {timeout_seconds}s)")
                 
                 response = requests.post(
                     "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -273,22 +273,23 @@ Keep it simple, factual, and easy to understand."""
                     timeout=timeout_seconds
                 )
                 response.raise_for_status()
+                logger.info("AI: Article analysis completed successfully!")
                 break  # Success, exit retry loop
                 
             except requests.exceptions.Timeout:
                 if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 5
-                    logger.warning(f"AI: Timeout on attempt {attempt + 1}, retrying in {wait_time}s...")
+                    wait_time = (attempt + 1) * 10
+                    logger.warning(f"AI: Timeout on attempt {attempt + 1}/{max_retries}, waiting {wait_time}s before retry...")
                     import time
                     time.sleep(wait_time)
                 else:
-                    logger.error("AI: All retry attempts failed due to timeout")
+                    logger.error(f"AI: All {max_retries} attempts timed out - analysis taking longer than expected")
                     raise
             except requests.exceptions.RequestException as e:
                 logger.error(f"AI: Request error on attempt {attempt + 1}: {str(e)}")
                 if attempt < max_retries - 1:
                     import time
-                    time.sleep(3)
+                    time.sleep(5)
                 else:
                     raise
 

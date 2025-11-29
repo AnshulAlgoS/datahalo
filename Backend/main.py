@@ -1009,30 +1009,41 @@ CRITICAL: Return ONLY the JSON object above. No markdown, no ```json blocks, no 
 
             logger.info("AI: Calling AI for analysis...")
             
-            # AI call with retry logic and increased timeout
-            max_retries = 2
+            # AI call with extended timeout for complex analysis
+            max_retries = 3
             response = None
             for attempt in range(max_retries):
                 try:
-                    logger.info(f"AI: Attempt {attempt + 1}/{max_retries}")
+                    timeout_seconds = 300  # 5 minutes - enough time for complex analysis
+                    logger.info(f"AI: Attempt {attempt + 1}/{max_retries} (timeout: {timeout_seconds}s)")
                     response = requests.post(
                         "https://integrate.api.nvidia.com/v1/chat/completions",
                         headers=headers,
                         json=payload,
-                        timeout=120  # Increased to 120 seconds
+                        timeout=timeout_seconds
                     )
                     response.raise_for_status()
+                    logger.info("AI: Request successful!")
                     break
                 except requests.exceptions.Timeout:
                     if attempt < max_retries - 1:
-                        logger.warning(f"AI: Timeout, retrying...")
+                        wait_time = (attempt + 1) * 10
+                        logger.warning(f"AI: Timeout on attempt {attempt + 1}, waiting {wait_time}s before retry...")
+                        import time
+                        time.sleep(wait_time)
+                    else:
+                        logger.error("AI: All attempts timed out - analysis taking too long")
+                        raise
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"AI: Request error on attempt {attempt + 1}: {str(e)}")
+                    if attempt < max_retries - 1:
                         import time
                         time.sleep(5)
                     else:
                         raise
             
             if not response:
-                raise Exception("AI request failed after retries")
+                raise Exception("AI request failed after all retries")
 
             ai_response = response.json()
             content = ai_response["choices"][0]["message"]["content"]
