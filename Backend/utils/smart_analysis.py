@@ -107,7 +107,7 @@ def smart_analyse(articles, pov="general public"):
         
         for i, article in enumerate(articles_to_analyze, 1):
             title = article.get('title', 'No title')
-            description = article.get('description', 'No description')
+            description = article.get('description') or 'No description'  # Handle None
             source = article.get('source', 'Unknown')
             category = article.get('category', 'general')
             published = article.get('publishedAt', '')
@@ -122,8 +122,8 @@ def smart_analyse(articles, pov="general public"):
             sources_set.add(source)
             categories_set.add(category)
             
-            # Truncate description
-            desc_truncated = description[:250] + "..." if len(description) > 250 else description
+            # Truncate description (safely handle None)
+            desc_truncated = description[:250] + "..." if description and len(description) > 250 else description
             
             article_text = f"[{i}] ({date_str}) {title}\n    Source: {source}\n    {desc_truncated}\n"
             article_texts.append(article_text)
