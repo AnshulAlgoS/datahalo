@@ -128,21 +128,28 @@ except ImportError:
     FALLBACK_ANALYZER_AVAILABLE = False
 
 @app.post("/analyze-article")
-async def analyze_article(request: ArticleRequest):
+async def analyze_article(request: ArticleRequest, use_ai: bool = Query(True, description="Use AI-powered analysis (Qwen3 480B). Set to false for rule-based.")):
     """
-    PROFESSIONAL ARTICLE ANALYZER - Best-in-Class Rule-Based Evaluation
+    PROFESSIONAL ARTICLE ANALYZER - Dual Mode: Rule-Based (Fast) or AI-Powered (Deep)
     
-    Features:
-    - ✅ Instant analysis (no AI delays)
+    **Rule-Based Mode (default, use_ai=false)**:
+    - ✅ Instant analysis (< 2 seconds)
     - ✅ Based on AP Style, Reuters, SPJ Ethics standards
     - ✅ Garbage input detection (spam/nonsense/testing)
     - ✅ 8-criteria scoring with detailed feedback
     - ✅ ~75-80% correlation with expert grading
     - ✅ Actionable learning recommendations
     
+    **AI-Powered Mode (use_ai=true)**:
+    - ✅ Deep AI evaluation using Qwen3 480B model (5-15 seconds)
+    - ✅ Contextual understanding and nuanced feedback
+    - ✅ ATS-like scoring against journalism standards
+    - ✅ Specific improvement suggestions
+    - ✅ Professional-grade analysis
+    
     Optimized for educational credibility and reliability.
     """
-    logger.info("INFO: Article analyzer endpoint called")
+    logger.info(f"INFO: Article analyzer endpoint called (AI mode: {use_ai})")
     
     try:
         article_text = request.article.strip()
@@ -154,16 +161,40 @@ async def analyze_article(request: ArticleRequest):
             raise HTTPException(status_code=400, detail="Article too short - minimum 20 words required")
         
         word_count = len(article_text.split())
-        logger.info(f"ANALYZE: Starting best-in-class rule-based analysis for {word_count} words")
         
-        # USE BEST RULE-BASED ANALYZER (reliable, instant, credible)
-        if FALLBACK_ANALYZER_AVAILABLE:
-            logger.info("ANALYZER: Professional standards-based evaluation (AP/Reuters/SPJ + garbage detection)")
-            result = fallback_analyzer(article_text)
+        # AI-POWERED ANALYSIS
+        if use_ai:
+            logger.info(f"ANALYZE: Starting AI-powered analysis for {word_count} words")
             
-            if result.get("status") == "success":
-                logger.info(f"SUCCESS: Analysis complete - Score: {result['analysis']['overall_score']}, Grade: {result['analysis']['letter_grade']}")
-                return result
+            if not AI_ARTICLE_ANALYZER_AVAILABLE:
+                logger.warning("AI analyzer not available, falling back to rule-based")
+                use_ai = False
+            else:
+                if not NVIDIA_API_KEY:
+                    logger.warning("NVIDIA API key not configured, falling back to rule-based")
+                    use_ai = False
+                else:
+                    logger.info("ANALYZER: Qwen3 AI-powered evaluation (5-15 seconds)")
+                    result = analyze_article_with_ai(article_text)
+                    
+                    if result.get("status") == "success":
+                        logger.info(f"SUCCESS: AI analysis complete - Score: {result['analysis']['overall_score']}, Grade: {result['analysis'].get('letter_grade', 'N/A')}")
+                        return result
+                    else:
+                        logger.warning(f"AI analysis failed: {result.get('message')}, falling back to rule-based")
+                        use_ai = False
+        
+        # RULE-BASED ANALYSIS (default or fallback)
+        if not use_ai:
+            logger.info(f"ANALYZE: Starting rule-based analysis for {word_count} words")
+            
+            if FALLBACK_ANALYZER_AVAILABLE:
+                logger.info("ANALYZER: Professional standards-based evaluation (AP/Reuters/SPJ + garbage detection)")
+                result = fallback_analyzer(article_text)
+                
+                if result.get("status") == "success":
+                    logger.info(f"SUCCESS: Analysis complete - Score: {result['analysis']['overall_score']}, Grade: {result['analysis']['letter_grade']}")
+                    return result
         
         # If nothing available
         raise HTTPException(
@@ -176,6 +207,66 @@ async def analyze_article(request: ArticleRequest):
     except Exception as e:
         logger.error(f"ERROR: Article analysis error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.post("/analyze-article-ai")
+async def analyze_article_ai_only(request: ArticleRequest):
+    """
+    AI-POWERED ARTICLE ANALYZER (Qwen3 480B Model)
+    
+    Features:
+    - ✅ Deep AI evaluation (5-15 seconds)
+    - ✅ Contextual understanding and nuanced analysis
+    - ✅ 8-criteria scoring: Objectivity, Sources, Accuracy, Clarity, Ethics, Context, Structure, Headline
+    - ✅ Specific, actionable improvement suggestions
+    - ✅ ATS-like scoring against professional journalism standards
+    - ✅ Educational-grade feedback for learning
+    
+    Uses Qwen3 Coder 480B model - fast, efficient, and reliable.
+    Ideal for in-depth article evaluation and learning.
+    """
+    logger.info("INFO: AI-only article analyzer endpoint called")
+    
+    try:
+        article_text = request.article.strip()
+        
+        if not article_text:
+            raise HTTPException(status_code=400, detail="Article text is required")
+        
+        if len(article_text.split()) < 20:
+            raise HTTPException(status_code=400, detail="Article too short - minimum 20 words required")
+        
+        word_count = len(article_text.split())
+        logger.info(f"AI ANALYZE: Starting AI-powered analysis for {word_count} words")
+        
+        # Check if AI analyzer is available
+        if not AI_ARTICLE_ANALYZER_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="AI article analyzer not available. Please use /analyze-article endpoint for rule-based analysis."
+            )
+        
+        if not NVIDIA_API_KEY:
+            raise HTTPException(
+                status_code=503,
+                detail="AI analysis requires NVIDIA API key configuration."
+            )
+        
+        # USE AI ANALYZER
+        logger.info("AI ANALYZER: Qwen3 480B AI-powered evaluation")
+        result = analyze_article_with_ai(article_text)
+        
+        if result.get("status") == "success":
+            logger.info(f"SUCCESS: AI analysis complete - Score: {result['analysis']['overall_score']}, Grade: {result['analysis'].get('letter_grade', 'N/A')}")
+            return result
+        else:
+            logger.error(f"AI analysis failed: {result.get('message')}")
+            raise HTTPException(status_code=500, detail=result.get('message', 'AI analysis failed'))
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"ERROR: AI article analysis error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
 # ---------------- CASE STUDY GENERATOR ENDPOINT ---------------- #
 
