@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node check-env.js && vite build",
     "build:dev": "vite build --mode development",
+    "build:prod": "vite build --mode production",
+    "check-env": "node check-env.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

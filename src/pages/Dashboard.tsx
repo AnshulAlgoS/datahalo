@@ -194,12 +194,21 @@ export default function Dashboard() {
   const loadSubmittedArticles = async () => {
     setLoadingArticles(true);
     try {
+      console.log("🔍 Fetching articles from:", `${API_URL}/lms/case-studies/teacher/${currentUser?.uid}`);
+      console.log("🌐 API_URL:", API_URL);
+      console.log("📝 Environment:", import.meta.env.MODE);
+      console.log("🔑 VITE_API_URL:", import.meta.env.VITE_API_URL);
+      
       const response = await axios.get(`${API_URL}/lms/case-studies/teacher/${currentUser?.uid}`);
+      console.log("✅ Response:", response.data);
+      
       if (response.data.status === "success") {
         setSubmittedArticles(response.data.case_studies || []);
+        console.log("📚 Loaded articles:", response.data.case_studies.length);
       }
-    } catch (error) {
-      console.error("Failed to load submitted articles");
+    } catch (error: any) {
+      console.error("❌ Failed to load submitted articles:", error);
+      console.error("❌ Error details:", error.response?.data || error.message);
     } finally {
       setLoadingArticles(false);
     }
