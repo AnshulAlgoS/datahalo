@@ -53,10 +53,10 @@ app.add_middleware(
         "http://127.0.0.1:8000",
         # Production URLs
         "https://datahalo.vercel.app",
+        "https://www.datahalo.vercel.app",
         "https://datahalo.onrender.com",
-        # Allow any Vercel preview deployments
-        "https://*.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Allow all Vercel preview deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1008,27 +1008,31 @@ CRITICAL: Return ONLY the JSON object above. No markdown, no ```json blocks, no 
             }
 
             logger.info("AI: Calling AI for analysis...")
+            
             # AI call with retry logic and increased timeout
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"AI: Attempt {attempt + 1}/{max_retries}")
-                response = requests.post(
-                    "https://integrate.api.nvidia.com/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=120  # Increased to 120 seconds
-                )
-                response.raise_for_status()
-                break
-            except requests.exceptions.Timeout:
-                if attempt < max_retries - 1:
-                    logger.warning(f"AI: Timeout, retrying...")
-                    import time
-                    time.sleep(5)
-                else:
-                    raise
-            response.raise_for_status()
+            max_retries = 2
+            response = None
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"AI: Attempt {attempt + 1}/{max_retries}")
+                    response = requests.post(
+                        "https://integrate.api.nvidia.com/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=120  # Increased to 120 seconds
+                    )
+                    response.raise_for_status()
+                    break
+                except requests.exceptions.Timeout:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"AI: Timeout, retrying...")
+                        import time
+                        time.sleep(5)
+                    else:
+                        raise
+            
+            if not response:
+                raise Exception("AI request failed after retries")
 
             ai_response = response.json()
             content = ai_response["choices"][0]["message"]["content"]
