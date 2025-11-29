@@ -36,57 +36,66 @@ def fetch_news(category="general", language="en", page_size=30):
         logger.error("ERROR: Database not available")
         return {"count": 0, "articles": [], "error": "Database not available"}
 
-    logger.info(f"WEB: Fetching fresh {category} news from NewsAPI")
+    logger.info(f"WEB: Fetching fresh {category} news from NewsData.io")
 
-    # 1️⃣ Try top-headlines first
-    top_url = "https://newsapi.org/v2/top-headlines"
-    top_params = {
-        "apiKey": NEWS_API_KEY,
-        "country": "in",
-        "category": category,
-        "language": language,
-        "pageSize": page_size,
+    # NewsData.io API - different from NewsAPI.org!
+    # Map categories to NewsData.io format
+    category_map = {
+        "general": "top",
+        "business": "business",
+        "technology": "technology",
+        "entertainment": "entertainment",
+        "health": "health",
+        "science": "science",
+        "sports": "sports"
+    }
+    
+    newsdata_category = category_map.get(category, "top")
+    
+    # NewsData.io latest endpoint
+    url = f"https://newsdata.io/api/1/latest"
+    params = {
+        "apikey": NEWS_API_KEY,  # Note: 'apikey' not 'apiKey'
+        "language": "en",
+        "category": newsdata_category,
+        "size": min(page_size, 10)  # NewsData.io free tier limit is 10
     }
     
     articles = []
     
     try:
-        top_response = requests.get(top_url, params=top_params, timeout=10)
-        top_response.raise_for_status()
-        top_data = top_response.json()
-        articles = top_data.get("articles", []) if top_data.get("status") == "ok" else []
-        logger.info(f"NEWS: Got {len(articles)} articles from top-headlines")
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("status") == "success":
+            results = data.get("results", [])
+            logger.info(f"NEWS: Got {len(results)} articles from NewsData.io")
+            
+            # Convert NewsData.io format to our format
+            for item in results:
+                if not item.get("title") or not item.get("link"):
+                    continue
+                    
+                articles.append({
+                    "title": item["title"],
+                    "description": item.get("description", ""),
+                    "url": item["link"],
+                    "image": item.get("image_url"),
+                    "source": {"name": item.get("source_id", "Unknown")},
+                    "publishedAt": item.get("pubDate"),
+                    "content": item.get("content", "")
+                })
+        else:
+            logger.error(f"ERROR: NewsData.io API error: {data}")
+            return {"count": 0, "articles": [], "error": data.get("message", "API error")}
+            
     except Exception as e:
-        logger.warning(f"WARNING: Top-headlines failed: {e}")
-
-    # 2️⃣ Fallback to "everything" if no results
-    if not articles:
-        logger.info("REFRESH: Falling back to 'everything' search...")
-        search_url = "https://newsapi.org/v2/everything"
-        search_params = {
-            "apiKey": NEWS_API_KEY,
-            "q": category if category != "general" else "India news",
-            "language": language,
-            "sortBy": "publishedAt",
-            "pageSize": page_size,
-            "from": (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")  # Last 7 days
-        }
-        try:
-            search_response = requests.get(search_url, params=search_params, timeout=10)
-            search_response.raise_for_status()
-            search_data = search_response.json()
-            if search_data.get("status") == "ok":
-                articles = search_data.get("articles", [])
-                logger.info(f"NEWS: Got {len(articles)} articles from everything search")
-            else:
-                logger.error(f"ERROR: Fallback fetch failed: {search_data}")
-                return {"count": 0, "articles": [], "error": "API fallback failed"}
-        except Exception as e:
-            logger.error(f"ERROR: Fallback request failed: {e}")
-            return {"count": 0, "articles": [], "error": f"Fallback failed: {str(e)}"}
+        logger.error(f"ERROR: NewsData.io request failed: {e}")
+        return {"count": 0, "articles": [], "error": f"API request failed: {str(e)}"}
 
     if not articles:
-        logger.warning("WARNING: No articles found from any source")
+        logger.warning("WARNING: No articles found from NewsData.io")
         return {"count": 0, "articles": [], "error": "No articles found"}
 
     # 3️⃣ Process and store NEW articles (append, don't replace)

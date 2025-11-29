@@ -82,6 +82,71 @@ class ArticleAnalyzerV2:
                 "message": "Article text is required"
             }
 
+        # DETECT GARBAGE INPUT - Important for credibility!
+        garbage_check = self._detect_garbage_input()
+        if garbage_check["is_garbage"]:
+            return {
+                "status": "success",
+                "analysis": {
+                    "overall_score": garbage_check["score"],
+                    "letter_grade": "F",
+                    "confidence": 1.0,
+                    "confidence_explanation": "High confidence - clearly not a legitimate article",
+                    "warnings": [f"⚠️ GARBAGE INPUT DETECTED: {garbage_check['reason']}"],
+                    "score_breakdown": {
+                        "objectivity": 0,
+                        "source_quality": 0,
+                        "factual_accuracy": 0,
+                        "writing_clarity": 0,
+                        "ethical_standards": 0,
+                        "bias_control": 0,
+                        "structure_flow": 0,
+                        "headline_quality": 0
+                    },
+                    "strengths": [],
+                    "critical_issues": [
+                        garbage_check["reason"],
+                        "This does not appear to be a legitimate news article",
+                        "Please submit actual journalism content for evaluation"
+                    ],
+                    "detailed_issues": [{
+                        "category": "Input Validation",
+                        "severity": "high",
+                        "issue": garbage_check["reason"],
+                        "suggestion": "Submit a real news article with proper structure, sources, and journalism standards"
+                    }],
+                    "improvement_actions": [{
+                        "priority": "high",
+                        "issue": "Not a valid article",
+                        "how_to_fix": "Write or paste a legitimate news article following journalism standards (5Ws+H, sources, clear structure)"
+                    }],
+                    "learning_recommendations": [{
+                        "module": "Journalism Fundamentals",
+                        "reason": "Learn how to write proper news articles before analysis",
+                        "resources": [{
+                            "type": "course",
+                            "title": "Introduction to News Writing",
+                            "url": "https://www.poynter.org/",
+                            "platform": "Poynter Institute"
+                        }]
+                    }],
+                    "article_stats": {
+                        "word_count": len(self.article_text.split()),
+                        "sentence_count": 0,
+                        "paragraph_count": 0,
+                        "avg_sentence_length": 0,
+                        "readability_score": 0,
+                        "syllables_per_word": 0
+                    },
+                    "methodology": {
+                        "scoring_system": "Professional standards-based analysis with garbage detection",
+                        "weights": {},
+                        "standards_based_on": ["AP Style", "Reuters", "SPJ Ethics"],
+                        "accuracy_note": "Input validation detected non-article content. Score reflects lack of journalism standards."
+                    }
+                }
+            }
+
         # Parse article structure
         self._parse_structure()
         
@@ -194,6 +259,93 @@ class ArticleAnalyzerV2:
         # Count words
         self.word_count = len(self.article_text.split())
         self.sentence_count = len(self.sentences)
+
+    def _detect_garbage_input(self) -> Dict[str, Any]:
+        """Detect if input is garbage/nonsense/not an article - STRICT validation"""
+        text_lower = self.article_text.lower()
+        words = [w.strip('.,!?;:') for w in self.article_text.split()]
+        word_count = len(words)
+        
+        # Check 1: Extremely short (just testing/spam)
+        if word_count < 10:
+            return {"is_garbage": True, "score": 5, "reason": "Input too short - not a real article (minimum 10 words needed)"}
+        
+        # Check 2: Repeated words/characters (spam/testing)
+        if len(set(words)) < word_count * 0.3:  # Less than 30% unique words
+            return {"is_garbage": True, "score": 10, "reason": "Excessive word repetition detected - appears to be spam or test input"}
+        
+        # Check 3: Gibberish detection - no common words
+        common_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but'}
+        has_common = any(word in text_lower.split() for word in common_words)
+        if not has_common and word_count > 20:
+            return {"is_garbage": True, "score": 15, "reason": "No common English words detected - appears to be gibberish or non-English"}
+        
+        # Check 4: Excessive gibberish words (NEW - catches your test case!)
+        # Count words with excessive consonants or random characters
+        gibberish_count = 0
+        for word in words:
+            if len(word) > 3:
+                # Check for excessive consonant clusters (more than 4 consonants in a row)
+                if re.search(r'[bcdfghjklmnpqrstvwxyz]{5,}', word.lower()):
+                    gibberish_count += 1
+                # Check for very long words with no vowels
+                elif len(word) > 5 and not any(c in 'aeiou' for c in word.lower()):
+                    gibberish_count += 1
+                # Check for random letter patterns (alternating vowel/consonant too much)
+                elif len(word) > 8 and len(set(word.lower())) < len(word) * 0.4:
+                    gibberish_count += 1
+        
+        if gibberish_count > word_count * 0.15:  # More than 15% gibberish words
+            return {"is_garbage": True, "score": 10, "reason": f"Excessive nonsense/gibberish words detected ({gibberish_count}/{word_count}) - not a legitimate article"}
+        
+        # Check 5: Proper sentence structure check
+        sentences = [s.strip() for s in re.split(r'[.!?]+', self.article_text) if s.strip()]
+        if len(sentences) > 0:
+            avg_words_per_sentence = word_count / len(sentences)
+            # If average sentence is too short (< 4 words) or way too long (> 50), likely garbage
+            if avg_words_per_sentence < 4 and word_count > 30:
+                return {"is_garbage": True, "score": 15, "reason": "Improper sentence structure - not a real article"}
+        
+        # Check 6: All caps or no caps (low effort)
+        if self.article_text.isupper() and word_count > 15:
+            return {"is_garbage": True, "score": 20, "reason": "ALL CAPS text - not professional journalism format"}
+        
+        if self.article_text.islower() and word_count > 30:
+            # Additional check: if lowercase AND poor grammar, likely garbage
+            capital_count = sum(1 for c in self.article_text if c.isupper())
+            if capital_count < 3:  # No proper nouns or sentence starts
+                return {"is_garbage": True, "score": 20, "reason": "All lowercase with no capitals - not a professional article"}
+        
+        # Check 7: No punctuation (incomplete/draft)
+        has_punctuation = any(char in self.article_text for char in '.!?')
+        if not has_punctuation and word_count > 20:
+            return {"is_garbage": True, "score": 25, "reason": "No sentence-ending punctuation - not a complete article"}
+        
+        # Check 8: URL/code spam
+        url_count = len(re.findall(r'http[s]?://|www\.', text_lower))
+        if url_count > 5:
+            return {"is_garbage": True, "score": 20, "reason": "Excessive URLs detected - appears to be spam rather than article content"}
+        
+        # Check 9: Just numbers or symbols
+        alpha_chars = sum(c.isalpha() for c in self.article_text)
+        if alpha_chars < len(self.article_text) * 0.5:  # Less than 50% letters
+            return {"is_garbage": True, "score": 15, "reason": "Majority non-alphabetic characters - not article text"}
+        
+        # Check 10: Professional article indicators - must have SOME
+        professional_indicators = 0
+        if any(word in text_lower for word in ['said', 'according', 'reported', 'stated', 'announced']):
+            professional_indicators += 1
+        if any(char in self.article_text for char in '",'):  # Quotes or proper punctuation
+            professional_indicators += 1
+        if re.search(r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b', self.article_text):  # Proper names
+            professional_indicators += 1
+        
+        # If article is long but has NO professional indicators, likely garbage
+        if word_count > 40 and professional_indicators == 0 and gibberish_count > 2:
+            return {"is_garbage": True, "score": 15, "reason": "No journalistic structure detected - appears to be random text, not a news article"}
+        
+        # Not garbage
+        return {"is_garbage": False, "score": 0, "reason": ""}
 
     def _assess_confidence(self):
         """Calculate confidence in the analysis"""

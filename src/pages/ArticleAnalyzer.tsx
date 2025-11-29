@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import axios from "axios";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   FileText,
@@ -24,6 +27,7 @@ import {
   ExternalLink,
   GraduationCap,
   Wrench,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -140,15 +144,45 @@ The election commission reported no significant irregularities, though turnout v
 
 const ArticleAnalyzer = () => {
   const navigate = useNavigate();
+  const { currentUser, userProfile } = useAuth();
   const [articleText, setArticleText] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Submission to teacher
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [enrolledClasses, setEnrolledClasses] = useState<any[]>([]);
+  const [selectedClass, setSelectedClass] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load enrolled classes
+  useEffect(() => {
+    if (currentUser && userProfile?.role === "student") {
+      loadEnrolledClasses();
+    }
+  }, [currentUser, userProfile]);
+
+  const loadEnrolledClasses = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/lms/courses/student/${currentUser?.uid}`);
+      setEnrolledClasses(response.data.courses || []);
+    } catch (error) {
+      console.error("Failed to load classes");
+    }
+  };
+
   const analyzeArticle = async () => {
     if (!articleText.trim()) {
       setError("Please enter an article to analyze");
+      return;
+    }
+
+    // Check word count before sending
+    const wordCount = articleText.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount < 20) {
+      setError(`Article too short - minimum 20 words required (you have ${wordCount} words)`);
       return;
     }
 
@@ -165,7 +199,10 @@ const ArticleAnalyzer = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Analysis failed");
+        // Try to get detailed error message from response
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.detail || `Analysis failed (${response.status})`;
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -173,14 +210,91 @@ const ArticleAnalyzer = () => {
       if (data.status === "success") {
         setResult(data.analysis);
         setActiveTab("overview");
+        
+        // Show success message with analysis type
+        const analysisType = data.analysis_type === "ai_primary" ? "AI-powered" : "Rule-based";
+        console.log(`Analysis complete: ${analysisType} analysis`);
       } else {
         setError(data.message || "Analysis failed");
       }
-    } catch (err) {
-      setError("Failed to analyze article. Please try again.");
-      console.error(err);
+    } catch (err: any) {
+      setError(err.message || "Failed to analyze article. Please try again.");
+      console.error("Analysis error:", err);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const submitToTeacher = async () => {
+    if (!selectedClass) {
+      toast.error("Please select a class");
+      return;
+    }
+
+    // Get the selected class to find teacher_id
+    const selectedClassData = enrolledClasses.find(cls => cls._id === selectedClass);
+    if (!selectedClassData) {
+      toast.error("Class not found");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Create a formatted analysis content
+      const analysisContent = `
+ARTICLE ANALYSIS REPORT
+
+Overall Score: ${result?.overall_score}/100 (${result?.letter_grade})
+
+SCORE BREAKDOWN:
+${Object.entries(result?.score_breakdown || {})
+  .map(([key, value]) => `- ${key.replace(/_/g, ' ').toUpperCase()}: ${value}/100`)
+  .join('\n')}
+
+STRENGTHS:
+${result?.strengths.map((s, i) => `${i + 1}. ${s}`).join('\n') || 'None identified'}
+
+CRITICAL ISSUES:
+${result?.critical_issues.map((i, idx) => `${idx + 1}. ${i}`).join('\n') || 'None identified'}
+
+DETAILED ANALYSIS:
+${result?.detailed_issues.map((issue, idx) => 
+  `${idx + 1}. [${issue.severity.toUpperCase()}] ${issue.category}: ${issue.issue}\n   Suggestion: ${issue.suggestion}`
+).join('\n\n') || 'No detailed issues'}
+
+ARTICLE STATISTICS:
+- Word Count: ${result?.article_stats.word_count}
+- Sentences: ${result?.article_stats.sentence_count}
+- Paragraphs: ${result?.article_stats.paragraph_count}
+- Readability Score: ${result?.article_stats.readability_score.toFixed(1)}
+- Avg Sentence Length: ${result?.article_stats.avg_sentence_length.toFixed(1)} words
+
+---
+Original Article Text:
+${articleText}
+      `.trim();
+
+      const response = await axios.post(`${API_URL}/lms/case-studies/submit`, {
+        student_id: currentUser?.uid,
+        student_name: userProfile?.displayName || currentUser?.email || "Unknown Student",
+        story_title: `Article Analysis - Score: ${result?.overall_score}/100 (${result?.letter_grade})`,
+        story_url: "N/A - Student Written Article",
+        analysis_content: analysisContent,
+        topic: "Article Analysis",
+        class_id: selectedClass,
+        teacher_id: selectedClassData.teacher_id,
+      });
+
+      if (response.data.status === "success") {
+        toast.success("Successfully submitted to teacher!");
+        setShowSubmitDialog(false);
+        setSelectedClass("");
+      }
+    } catch (error: any) {
+      console.error("Submission error:", error);
+      toast.error(error.response?.data?.detail || "Failed to submit. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -268,31 +382,29 @@ const ArticleAnalyzer = () => {
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="w-5 h-5 text-primary" />
                 <h3 className="text-xl font-bold">
-                  ATS Scanner for Journalism + AI Enhancement
+                  Professional Journalism Evaluation
                 </h3>
               </div>
               <p className="text-sm text-muted-foreground mb-3">
-                Like how resumes are scored by Applicant Tracking Systems, your articles are scored against
-                journalism standards. Get instant feedback on objectivity, sources, bias, ethics, and writing quality.
-                <strong className="text-primary"> Enhanced with NVIDIA AI</strong> for deeper contextual analysis.
+                <strong className="text-primary">Professional journalism evaluation</strong> using advanced rule-based analysis against AP Style, Reuters Handbook, and SPJ Ethics standards. Provides credible, educational feedback on objectivity, sources, bias, ethics, and writing quality. <span className="text-xs">(AI-enhanced analysis available for longer articles when service is responsive)</span>
               </p>
               <div className="grid md:grid-cols-3 gap-4 text-sm">
                 <div className="flex items-start gap-2">
-                  <Target className="w-4 h-4 text-primary mt-0.5" />
+                  <Zap className="w-4 h-4 text-primary mt-0.5" />
                   <span className="text-muted-foreground">
-                    <strong className="text-foreground">8 Scoring Categories</strong> - Based on AP Style, Reuters, SPJ Ethics
+                    <strong className="text-foreground">Standards-Based</strong> - Advanced rule-based analysis, AI-enhanced when available
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-primary mt-0.5" />
+                  <Target className="w-4 h-4 text-primary mt-0.5" />
                   <span className="text-muted-foreground">
-                    <strong className="text-foreground">AI-Enhanced</strong> - Contextual analysis beyond patterns
+                    <strong className="text-foreground">8 Evaluation Criteria</strong> - AP Style, Reuters, SPJ Ethics standards
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <TrendingUp className="w-4 h-4 text-primary mt-0.5" />
                   <span className="text-muted-foreground">
-                    <strong className="text-foreground">~80-85% Accuracy</strong> - Validated against expert grading
+                    <strong className="text-foreground">Educational Feedback</strong> - Detailed, actionable guidance
                   </span>
                 </div>
               </div>
@@ -312,12 +424,10 @@ const ArticleAnalyzer = () => {
             <div className="flex-1 text-sm">
               <p className="text-yellow-700 dark:text-yellow-400 font-semibold mb-1 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
-                Beta Version - Use as Learning Tool
+                Educational Tool - Supplement to Expert Review
               </p>
               <p className="text-muted-foreground">
-                This AI analyzer provides guidance based on journalism standards but is <strong>not a substitute for expert human review</strong>. 
-                Scores should be used as a starting point for discussion and improvement. Estimated accuracy: ~80-85% correlation with 
-                professional journalism educators.
+                This AI analyzer uses real artificial intelligence to read and understand your article, evaluating it against professional journalism standards. While it provides credible, educational feedback, it should be used <strong>as a learning tool alongside</strong> - not as a replacement for - expert human review from journalism professors and editors.
               </p>
             </div>
           </div>
@@ -464,6 +574,25 @@ const ArticleAnalyzer = () => {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-6"
             >
+              {/* AI Analysis Badge */}
+              {result.methodology?.analysis_type?.includes("AI") && (
+                <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/20 rounded-lg">
+                      <Zap className="w-5 h-5 text-purple-500" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-purple-700 dark:text-purple-300">
+                        ✓ AI-Powered Analysis Complete
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Your article was evaluated by real AI that reads and understands content - not pattern matching
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Score Overview */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Overall Score */}
@@ -980,11 +1109,95 @@ const ArticleAnalyzer = () => {
                   <Share2 className="w-4 h-4 mr-2" />
                   Share Results
                 </Button>
+                {userProfile?.role === "student" && (
+                  <Button 
+                    onClick={() => setShowSubmitDialog(true)} 
+                    className="flex-1"
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    Submit to Teacher
+                  </Button>
+                )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* Submit to Teacher Dialog */}
+      {showSubmitDialog && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card border border-border rounded-2xl p-6 max-w-md w-full"
+          >
+            <h3 className="text-xl font-bold mb-4">Submit to Teacher</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Select a class to submit your article analysis for review
+            </p>
+
+            <div className="space-y-4">
+              {enrolledClasses.length > 0 ? (
+                <>
+                  <div>
+                    <label className="text-sm font-semibold mb-2 block">Select Class</label>
+                    <select
+                      value={selectedClass}
+                      onChange={(e) => setSelectedClass(e.target.value)}
+                      className="w-full p-3 rounded-lg bg-background border border-border"
+                    >
+                      <option value="">Choose a class...</option>
+                      {enrolledClasses.map((cls) => (
+                        <option key={cls._id} value={cls._id}>
+                          {cls.title} - {cls.teacher_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowSubmitDialog(false)}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={submitToTeacher}
+                      disabled={submitting || !selectedClass}
+                      className="flex-1"
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Submit
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mb-4">
+                    You're not enrolled in any classes yet
+                  </p>
+                  <Button onClick={() => navigate("/classes")}>
+                    Join a Class
+                  </Button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
