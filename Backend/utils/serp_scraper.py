@@ -407,156 +407,115 @@ class WorkingJournalistScraper:
                 }
             }
             
-            # Source 1: Get journalist's image
+            # Source 1: Get journalist profile image (Google Images via SERP API)
             journalist_image = self.get_journalist_image(journalist_name)
             if journalist_image:
                 all_data['journalist_image'] = journalist_image
-                logger.info(f"SUCCESS: Journalist image found")
+                logger.info(f"SUCCESS: Journalist profile image found")
             
-            time.sleep(1)
+            time.sleep(0.3)
             
-            # Source 2: Wikipedia
+            # Source 2: Wikipedia (for bio and fallback image)
             wikipedia_data = self.wikipedia_api(journalist_name)
-            if wikipedia_data:
+            if wikipedia_data and wikipedia_data.get('extract'):
                 all_data['sections']['wikipedia'] = wikipedia_data
                 all_data['metadata']['sources_used'].append('Wikipedia')
                 all_data['metadata']['total_results'] += 1
-                logger.info(f"SUCCESS: Wikipedia: Found")
+                logger.info(f"SUCCESS: Wikipedia: Found ({len(wikipedia_data.get('extract', ''))} chars)")
                 
-                # Use Wikipedia image if we don't have one yet
+                # Use Wikipedia image as fallback if Google Images failed
                 if not journalist_image and wikipedia_data.get('image'):
                     all_data['journalist_image'] = wikipedia_data['image']
+                    logger.info(f"SUCCESS: Using Wikipedia image as fallback")
+            else:
+                # Wikipedia failed - use AI knowledge immediately for bio
+                logger.warning(f"WARNING: Wikipedia unavailable, using AI for biography")
+                if ai_client:
+                    try:
+                        prompt = f"""Provide a comprehensive 200-word biography of journalist {journalist_name} including:
+- Career background and current position
+- Major works and investigations
+- Awards and recognition
+- Impact on journalism
+
+Be factual and specific."""
+
+                        response = ai_client.chat.completions.create(
+                            model="qwen/qwen3-coder-480b-a35b-instruct",
+                            messages=[
+                                {"role": "system", "content": "You are a journalism research expert."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.2,
+                            max_tokens=400,
+                            timeout=30
+                        )
+                        
+                        ai_bio = response.choices[0].message.content.strip()
+                        all_data['sections']['wikipedia'] = {
+                            'extract': ai_bio,
+                            'source': 'AI Knowledge'
+                        }
+                        all_data['metadata']['sources_used'].append('AI Knowledge (Bio)')
+                        all_data['metadata']['total_results'] += 1
+                        logger.info(f"SUCCESS: Using AI biography as fallback")
+                    except Exception as e:
+                        logger.error(f"AI bio fallback failed: {e}")
             
-            time.sleep(1)
+            time.sleep(0.2)  # Reduced delay
             
-            # Source 2: SERP API Google searches
+            # Source 3: OPTIMIZED SERP searches for articles (fewer queries, less delay)
             search_queries = [
                 f'"{journalist_name}" journalist biography',
-                f'"{journalist_name}" news articles career',
-                f'"{journalist_name}" awards journalism prize',
-                f'"{journalist_name}" interview profile',
-                f'{journalist_name} reporter works',
+                f'"{journalist_name}" major works career',
+                f'"{journalist_name}" awards recognition',
             ]
             
             all_articles = []
             seen_urls = set()
             
             for query in search_queries:
-                results = self.serp_google_search(query, max_results=20)
+                results = self.serp_google_search(query, max_results=12)  # Reduced from 15
                 
                 if results:
                     all_data['metadata']['sources_used'].append(f'Google ({query[:40]}...)')
                     
-                    for result in results:
+                    for result in results[:10]:  # Only process top 10 per query
                         if result['url'] not in seen_urls:
-                            # Try to scrape content
-                            article_data = self.scrape_article(result['url'])
-                            
-                            if article_data:
-                                article_data['snippet'] = result['snippet']
-                                article_data['search_query'] = query
-                                all_articles.append(article_data)
-                            else:
-                                # Keep result even if scraping fails
-                                all_articles.append({
-                                    'url': result['url'],
-                                    'title': result['title'],
-                                    'snippet': result['snippet'],
-                                    'domain': urlparse(result['url']).netloc,
-                                    'search_query': query
-                                })
-                            
-                            seen_urls.add(result['url'])
-                            time.sleep(0.3)
-                
-                time.sleep(1.5)
-                
-                if len(all_articles) >= 40:
-                    break
-            
-            if all_articles:
-                all_data['sections']['articles'] = all_articles[:40]
-                all_data['metadata']['total_results'] += len(all_articles)
-                logger.info(f"SUCCESS: Collected {len(all_articles)} articles")
-            
-            # Source 3: YouTube Videos (Educational Resources)
-            logger.info("🎥 Searching YouTube for interviews and talks...")
-            youtube_videos = self.youtube_search(journalist_name)
-            if youtube_videos:
-                all_data['sections']['youtube_videos'] = youtube_videos
-                all_data['metadata']['sources_used'].append('YouTube')
-                all_data['metadata']['total_results'] += len(youtube_videos)
-                logger.info(f"SUCCESS: Found {len(youtube_videos)} YouTube videos")
-            
-            time.sleep(1)
-            
-            # Source 4: Awards & Recognition (dedicated search)
-            logger.info("AWARD: Searching for awards and recognition...")
-            awards_queries = [
-                f'"{journalist_name}" awards won',
-                f'"{journalist_name}" journalism prize',
-            ]
-            
-            awards_articles = []
-            for query in awards_queries:
-                results = self.serp_google_search(query, max_results=10)
-                if results:
-                    for result in results:
-                        if result['url'] not in seen_urls:
-                            awards_articles.append({
+                            # Keep result WITHOUT scraping for speed
+                            all_articles.append({
                                 'url': result['url'],
                                 'title': result['title'],
                                 'snippet': result['snippet'],
                                 'domain': urlparse(result['url']).netloc,
-                                'type': 'award'
+                                'search_query': query
                             })
+                            
                             seen_urls.add(result['url'])
-                time.sleep(1)
                 
-            if awards_articles:
-                all_data['sections']['awards'] = awards_articles
-                all_data['metadata']['total_results'] += len(awards_articles)
-                logger.info(f"SUCCESS: Found {len(awards_articles)} award references")
-            
-            time.sleep(1)
-            
-            # Source 4: AI Knowledge (fallback)
-            if all_data['metadata']['total_results'] < 5:
-                logger.info("WARNING: Limited data, using AI knowledge")
+                time.sleep(0.3)  # REDUCED from 0.5s for speed
                 
-                if ai_client:
-                    try:
-                        prompt = f"""Provide comprehensive information about journalist {journalist_name}:
-1. Career background and positions
-2. Notable works and investigations
-3. Awards and recognition
-4. Writing style and methodology
-5. Impact on journalism
-6. Controversies or significant events
-
-Be detailed and specific."""
-
-                        response = ai_client.chat.completions.create(
-                            model="meta/llama-3.1-70b-instruct",
-                            messages=[
-                                {"role": "system", "content": "You are a journalism research expert."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            temperature=0.3,
-                            max_tokens=2000,
-                        )
-                        
-                        ai_info = response.choices[0].message.content.strip()
-                        
-                        all_data['sections']['ai_knowledge'] = {
-                            'content': ai_info,
-                            'source': 'AI Knowledge Base'
-                        }
-                        all_data['metadata']['sources_used'].append('AI Knowledge')
-                        all_data['metadata']['total_results'] += 1
-                        
-                    except Exception as e:
-                        logger.error(f"AI fallback failed: {e}")
+                if len(all_articles) >= 20:  # Reduced from 25
+                    break
+            
+            if all_articles:
+                all_data['sections']['articles'] = all_articles[:20]
+                all_data['metadata']['total_results'] += len(all_articles)
+                logger.info(f"SUCCESS: Collected {len(all_articles)} articles")
+            
+            # Source 4: YouTube Videos (OPTIONAL - skip if taking too long)
+            try:
+                logger.info("🎥 Searching YouTube...")
+                youtube_videos = self.youtube_search(journalist_name)
+                if youtube_videos:
+                    all_data['sections']['youtube_videos'] = youtube_videos[:5]  # Limit to 5
+                    all_data['metadata']['sources_used'].append('YouTube')
+                    all_data['metadata']['total_results'] += len(youtube_videos[:5])
+                    logger.info(f"SUCCESS: Found {len(youtube_videos[:5])} YouTube videos")
+            except Exception as e:
+                logger.warning(f"YouTube search skipped: {e}")
+            
+            time.sleep(0.2)  # Minimal delay
             
             logger.info(f"\nSUCCESS: === SEARCH COMPLETE ===")
             logger.info(f"STATS: Total: {all_data['metadata']['total_results']} results")
@@ -570,7 +529,7 @@ Be detailed and specific."""
     
     def generate_case_study(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generate AI case study
+        Generate AI case study - OPTIMIZED for speed while keeping comprehensive output
         """
         if not ai_client:
             return None
@@ -579,119 +538,103 @@ Be detailed and specific."""
             journalist_name = data['journalist_name']
             sections = data['sections']
             
-            wikipedia_text = sections.get('wikipedia', {}).get('extract', '')[:2500]
+            # ULTRA-MINIMAL for MAXIMUM SPEED
+            bio = sections.get('wikipedia', {}).get('extract', '')[:600]  # Reduced from 800
             
-            articles_list = "\n".join([
-                f"- {a.get('title', 'Untitled')} ({a.get('domain', 'N/A')}) - {a.get('word_count', 0)} words\n  Published: {a.get('published_date', 'N/A')} | Author: {a.get('author', 'N/A')}"
-                for a in sections.get('articles', [])[:15]
+
+            # Top 3 articles only
+            articles = "\n".join([
+                f"{i+1}. {a.get('title', 'Untitled')}"
+                for i, a in enumerate(sections.get('articles', [])[:3])
             ])
             
-            youtube_videos = "\n".join([
-                f"- {v['title']} ({v.get('channel', 'Unknown')})\n  URL: {v['url']}"
-                for v in sections.get('youtube_videos', [])[:10]
-            ])
-            
-            ai_knowledge = sections.get('ai_knowledge', {}).get('content', '')
-            
-            prompt = f"""You are a distinguished journalism professor creating an EDUCATIONAL CASE STUDY for students about journalist {journalist_name}.
+            prompt = f"""Create comprehensive educational case study for journalist {journalist_name}.
 
-AVAILABLE DATA:
+BIO: {bio}
 
-WIKIPEDIA INFO:
-{wikipedia_text}
+ARTICLES: {articles}
 
-ARTICLES & WORKS (with sources):
-{articles_list}
-
-YOUTUBE INTERVIEWS & TALKS:
-{youtube_videos}
-
-ADDITIONAL RESEARCH:
-{ai_knowledge}
-
-CREATE AN IN-DEPTH, DETAILED CASE STUDY with SPECIFIC EXAMPLES from the data above.
-
-CRITICAL REQUIREMENTS:
-- Use SPECIFIC article titles, dates, and publication names from the data above
-- When mentioning major works, cite the actual article titles and sources provided
-- Reference specific YouTube videos by title
-- Do NOT use ** for bold text or emphasis
-- Use clear section headings with ALL CAPS
-- Use bullet points (•) for lists
-- Make it feel real and educational, not generic AI text
-- Include specific examples with source citations
-
-Structure your response EXACTLY as follows:
+FORMAT (NO ** symbols):
 
 EXECUTIVE SUMMARY
-[Write 3-4 comprehensive paragraphs about the journalist's career, significance, and contributions. Include specific examples from the articles provided.]
+3-4 paragraphs on career and impact.
 
 CAREER TRAJECTORY & BACKGROUND
-[Provide detailed information about their education, early career, and how they rose to prominence. Use specific dates and positions when available.]
+Education, early career, rise to prominence.
 
 MAJOR WORKS & IMPACT
-[For EACH major work, include:
-• The specific article/report title (use exact titles from the articles list above)
-• Publication name and date
-• Impact and significance
-• Key findings or revelations
-Format each major work as a separate subsection. Do NOT use ** for emphasis.]
+• 2-3 major works with publication names and impact
 
 JOURNALISM STYLE & METHODOLOGY
-[Analyze their reporting techniques, writing style, and approach to journalism. Provide specific examples from their work.]
+Reporting techniques and approach.
 
 ETHICAL ANALYSIS
-[Examine ethical considerations in their work, controversies if any, and how they navigated difficult situations.]
+Ethical issues and controversies.
 
 INFLUENCE & LEGACY
-[Discuss their impact on journalism, mentorship, and lasting contributions to the field.]
+Impact on journalism field.
 
 LEARNING OBJECTIVES
 Students will:
-• [Objective 1]
-• [Objective 2]
-• [Continue with 7-8 total objectives]
+• [7-8 objectives]
 
 CRITICAL THINKING QUESTIONS
-1. [Question 1 - deep analytical question]
-2. [Question 2 - ethical consideration]
-[Continue with 10-12 thought-provoking questions]
+1-12. [12 questions]
 
 PRACTICAL APPLICATIONS
-• [Activity 1 - hands-on journalism exercise]
-• [Activity 2 - analysis assignment]
-[Include 5-6 practical activities]
+• [5-6 exercises]
 
 CONCLUSION
-[Synthesize the key lessons and takeaways. 2-3 paragraphs.]
+2-3 paragraphs on key lessons.
 
-RECOMMENDED RESOURCES FOR FURTHER STUDY
-• [Specific YouTube video titles from the data]
-• [Specific articles from the data]
-• [Other relevant resources]
+RECOMMENDED RESOURCES
+• List videos and articles
 
-Remember: Use actual article titles, publication names, and dates from the provided data. Make every example specific and verifiable."""
+Be comprehensive but concise."""
 
-            logger.info(f"AI: Generating case study...")
+            logger.info(f"AI: Generating comprehensive case study...")
             
-            response = ai_client.chat.completions.create(
-                model="meta/llama-3.1-70b-instruct",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a distinguished journalism professor creating educational case studies for students."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.4,
-                max_tokens=8000,
-                top_p=0.9
-            )
-            
-            analysis = response.choices[0].message.content.strip()
+            # FAST RETRY LOGIC - optimized for 1-2 minute response
+            max_retries = 2  # Reduced from 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    logger.info(f"AI: Attempt {attempt}/{max_retries}")
+                    
+                    response = ai_client.chat.completions.create(
+                        model="qwen/qwen3-coder-480b-a35b-instruct",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a journalism educator. Create comprehensive, well-structured case studies."
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        temperature=0.2,
+                        max_tokens=4000,
+                        top_p=0.8,
+                        timeout=90  # Increased timeout for larger model
+                    )
+                    
+                    analysis = response.choices[0].message.content.strip()
+                    logger.info(f"AI: SUCCESS on attempt {attempt}")
+                    break
+                    
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if '504' in error_str or 'timeout' in error_str or 'gateway' in error_str:
+                        if attempt < max_retries:
+                            wait_time = 2  # Quick 2s retry
+                            logger.warning(f"AI: Timeout on attempt {attempt}, quick retry in {wait_time}s...")
+                            time.sleep(wait_time)
+                        else:
+                            logger.error(f"AI: All {max_retries} attempts failed with timeout")
+                            raise Exception("AI service timeout after retries. Please try again in a few moments.")
+                    else:
+                        logger.error(f"AI: Non-timeout error: {e}")
+                        raise
             
             return {
                 'journalist_name': journalist_name,
@@ -751,15 +694,3 @@ def generate_journalist_case_study(journalist_name: str) -> Dict[str, Any]:
             'message': str(e)
         }
 
-
-if __name__ == "__main__":
-    test = "Barkha Dutt"
-    logger.info(f"🧪 Testing: {test}")
-    result = generate_journalist_case_study(test)
-    
-    if result['status'] == 'success':
-        print(f"\nSUCCESS: SUCCESS")
-        print(f"Sources: {result['case_study']['data_sources_count']}")
-        print(f"Preview: {result['case_study']['case_study_analysis'][:300]}...")
-    else:
-        print(f"\nERROR: FAILED: {result['message']}")

@@ -917,7 +917,7 @@ Be concise. Return ONLY valid JSON. No markdown, no text outside JSON."""
             }
 
             payload = {
-                "model": "meta/llama-3.1-70b-instruct",
+                "model": "qwen/qwen3-coder-480b-a35b-instruct",
                 "messages": [
                     {
                         "role": "system",
@@ -1317,7 +1317,7 @@ Keep responses conversational, engaging, and empowering. Use analogies and metap
         }
         
         payload = {
-            "model": "meta/llama-3.1-70b-instruct",
+                "model": "qwen/qwen3-coder-480b-a35b-instruct",
             "messages": messages,
             "temperature": 0.7,
             "top_p": 0.9,

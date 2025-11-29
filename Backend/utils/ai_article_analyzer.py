@@ -68,7 +68,7 @@ FIXES: how to improve 1 | how to improve 2"""
         }
 
         payload = {
-            "model": "meta/llama-3.1-70b-instruct",
+            "model": "qwen/qwen3-coder-480b-a35b-instruct",
             "messages": [
                 {
                     "role": "system",

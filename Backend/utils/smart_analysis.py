@@ -244,7 +244,7 @@ If articles are old or not India-focused, acknowledge this and work with what's 
                 logger.info(f"AI: Attempt {attempt + 1}/{max_retries} - calling NVIDIA API (timeout: {timeout_seconds}s)...")
                 
                 response = ai_client.chat.completions.create(
-                    model="qwen/qwen2.5-coder-32b-instruct",
+                    model="qwen/qwen3-coder-480b-a35b-instruct",
                     messages=[
                         {
                             "role": "system", 

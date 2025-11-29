@@ -371,7 +371,7 @@ REMEMBER: If you create generic questions not tied to the specific resource cont
         }
         
         payload = {
-            "model": "meta/llama-3.1-70b-instruct",
+                "model": "qwen/qwen3-coder-480b-a35b-instruct",
             "messages": [
                 {
                     "role": "system",
@@ -447,7 +447,7 @@ REMEMBER: If you create generic questions not tied to the specific resource cont
             "learning_objectives": assignment_data.get("learning_objectives", []),
             "teacher_notes": assignment_data.get("teacher_notes", ""),
             "created_at": datetime.utcnow(),
-            "ai_model": "meta/llama-3.1-70b-instruct",
+            "ai_model": "qwen/qwen3-coder-480b-a35b-instruct",
             "quality_score": None,  # Teacher can rate later
             "feedback": None,  # Teacher feedback for improvement
             "used_count": 0,  # Track how many times this pattern is used
