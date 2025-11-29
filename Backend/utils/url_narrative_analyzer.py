@@ -205,7 +205,7 @@ Source: {article.get('source', '')}
 Date: {article.get('published_date', 'Unknown')[:10]}
 
 Content:
-{article.get('content', '')[:3000]}
+{article.get('content', '')[:2000]}
 
 Provide analysis in this JSON format:
 
@@ -254,17 +254,43 @@ Keep it simple, factual, and easy to understand."""
             ],
             "temperature": 0.3,
             "top_p": 0.9,
-            "max_tokens": 1500
+            "max_tokens": 1200  # Reduced to speed up response
         }
 
         logger.info("AI: Calling AI for article analysis...")
-        response = requests.post(
-            "https://integrate.api.nvidia.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        response.raise_for_status()
+        
+        # Retry logic with exponential backoff
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                timeout_seconds = 120  # Increased from 60 to 120 seconds
+                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} with {timeout_seconds}s timeout")
+                
+                response = requests.post(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout_seconds
+                )
+                response.raise_for_status()
+                break  # Success, exit retry loop
+                
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 5
+                    logger.warning(f"AI: Timeout on attempt {attempt + 1}, retrying in {wait_time}s...")
+                    import time
+                    time.sleep(wait_time)
+                else:
+                    logger.error("AI: All retry attempts failed due to timeout")
+                    raise
+            except requests.exceptions.RequestException as e:
+                logger.error(f"AI: Request error on attempt {attempt + 1}: {str(e)}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(3)
+                else:
+                    raise
 
         ai_response = response.json()
         content = ai_response["choices"][0]["message"]["content"]
@@ -283,11 +309,8 @@ Keep it simple, factual, and easy to understand."""
         return {}
 
 
-def find_related_articles(original_article: Dict[str, Any], days: int = 14) -> List[Dict[str, Any]]:
-    """Find related articles about the same story across different outlets."""
-    if not NEWS_API_KEY:
-        return []
-    
+def find_related_articles(original_article: Dict[str, Any], days: int = 14, serp_api_key: str = None) -> List[Dict[str, Any]]:
+    """Find related articles about the same story using SERP API (Google News search)."""
     try:
         # Extract key terms from title
         title = original_article['title']
@@ -298,43 +321,89 @@ def find_related_articles(original_article: Dict[str, Any], days: int = 14) -> L
         # Use top 3 keywords for search
         search_query = ' '.join(words[:3])
         
-        logger.info(f"Searching for related articles with query: {search_query}")
+        logger.info(f"SERP: Searching Google News for related articles: {search_query}")
         
-        # Calculate date range
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days)
+        # Use SERP API for Google News search
+        if serp_api_key:
+            try:
+                serp_url = "https://serpapi.com/search"
+                params = {
+                    "engine": "google_news",
+                    "q": search_query,
+                    "api_key": serp_api_key,
+                    "gl": "us",
+                    "hl": "en"
+                }
+                
+                response = requests.get(serp_url, params=params, timeout=20)
+                response.raise_for_status()
+                data = response.json()
+                
+                related_articles = []
+                
+                # Extract from news_results
+                if data.get('news_results'):
+                    for item in data['news_results'][:50]:  # Limit to 50
+                        related_articles.append({
+                            'title': item.get('title', 'No title'),
+                            'description': item.get('snippet', ''),
+                            'source': item.get('source', {}).get('name', 'Unknown') if isinstance(item.get('source'), dict) else item.get('source', 'Unknown'),
+                            'url': item.get('link', ''),
+                            'published_date': item.get('date', datetime.utcnow().isoformat()),
+                            'image': item.get('thumbnail', '')
+                        })
+                
+                logger.info(f"SERP: Found {len(related_articles)} related articles from Google News")
+                return related_articles
+                
+            except Exception as serp_error:
+                logger.error(f"SERP API failed: {str(serp_error)}")
         
-        # Search NewsAPI
-        url = "https://newsapi.org/v2/everything"
-        params = {
-            "apiKey": NEWS_API_KEY,
-            "q": search_query,
-            "language": "en",
-            "sortBy": "publishedAt",
-            "pageSize": 100,
-            "from": start_date.strftime("%Y-%m-%d"),
-            "to": end_date.strftime("%Y-%m-%d")
-        }
+        # Fallback: Try NewsAPI if SERP fails
+        if NEWS_API_KEY:
+            logger.info("FALLBACK: Trying NewsAPI...")
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+            
+            url = "https://newsapi.org/v2/everything"
+            params = {
+                "apiKey": NEWS_API_KEY,
+                "q": search_query,
+                "language": "en",
+                "sortBy": "publishedAt",
+                "pageSize": 100,
+                "from": start_date.strftime("%Y-%m-%d"),
+                "to": end_date.strftime("%Y-%m-%d")
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            
+            # Check for NewsAPI errors
+            if response.status_code == 401:
+                logger.warning("NewsAPI key invalid - skipping NewsAPI fallback")
+                return []
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            related_articles = []
+            if data.get('status') == 'ok' and data.get('articles'):
+                for article in data['articles']:
+                    if article.get('title') and article['title'] != '[Removed]':
+                        related_articles.append({
+                            'title': article['title'],
+                            'description': article.get('description', ''),
+                            'source': article.get('source', {}).get('name', 'Unknown'),
+                            'url': article['url'],
+                            'published_date': article.get('publishedAt', ''),
+                            'image': article.get('urlToImage', '')
+                        })
+            
+            logger.info(f"NewsAPI: Found {len(related_articles)} related articles")
+            return related_articles
         
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        related_articles = []
-        if data.get('status') == 'ok' and data.get('articles'):
-            for article in data['articles']:
-                if article.get('title') and article['title'] != '[Removed]':
-                    related_articles.append({
-                        'title': article['title'],
-                        'description': article.get('description', ''),
-                        'source': article.get('source', {}).get('name', 'Unknown'),
-                        'url': article['url'],
-                        'published_date': article.get('publishedAt', ''),
-                        'image': article.get('urlToImage', '')
-                    })
-        
-        logger.info(f"Found {len(related_articles)} related articles")
-        return related_articles
+        logger.warning("No search APIs available - returning empty results")
+        return []
         
     except Exception as e:
         logger.error(f"Failed to find related articles: {str(e)}")
@@ -1018,7 +1087,7 @@ async def analyze_url_narrative(url: str, serp_api_key: str, ai_api_key: str, da
         
         # Step 3: Find related articles across different outlets
         logger.info(f"FIND: Step 3: Searching for related articles (last {days} days)...")
-        related_articles = find_related_articles(original_article, days)
+        related_articles = find_related_articles(original_article, days, serp_api_key)
         logger.info(f"SUCCESS: Found {len(related_articles)} related articles")
         
         # Combine original with related articles

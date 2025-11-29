@@ -386,12 +386,26 @@ REMEMBER: If you create generic questions not tied to the specific resource cont
             "max_tokens": 3000
         }
         
-        response = requests.post(
-            "https://integrate.api.nvidia.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
+        # AI call with retry logic and increased timeout
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} for assignment generation")
+                response = requests.post(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=120  # Increased to 120 seconds
+                )
+                response.raise_for_status()
+                break
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    logger.warning(f"AI: Timeout, retrying in 5s...")
+                    import time
+                    time.sleep(5)
+                else:
+                    raise
         response.raise_for_status()
         
         ai_response = response.json()

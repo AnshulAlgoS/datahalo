@@ -236,22 +236,49 @@ If articles are old or not India-focused, acknowledge this and work with what's 
         # Call NVIDIA API
         logger.info(f"Starting AI analysis for {pov}")
         
-        response = ai_client.chat.completions.create(
-            model="qwen/qwen2.5-coder-32b-instruct",
-            messages=[
-                {
-                    "role": "system", 
-                    "content": prompt_config['system'] + " Write naturally in flowing prose. NO templates, NO formulas, NO markdown. Write like a professional analyst writing for educated readers who want depth and accuracy."
-                },
-                {
-                    "role": "user", 
-                    "content": user_prompt
-                }
-            ],
-            temperature=0.4,  # Balanced for accuracy and natural writing
-            max_tokens=6000,
-            top_p=0.9,
-        )
+        # Use shorter timeout and retry logic
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"AI: Attempt {attempt + 1}/{max_retries} - calling NVIDIA API...")
+                
+                response = ai_client.chat.completions.create(
+                    model="qwen/qwen2.5-coder-32b-instruct",
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": prompt_config['system'] + " Write naturally in flowing prose. NO templates, NO formulas, NO markdown. Write like a professional analyst writing for educated readers who want depth and accuracy."
+                        },
+                        {
+                            "role": "user", 
+                            "content": user_prompt
+                        }
+                    ],
+                    temperature=0.4,
+                    max_tokens=4500,  # Reduced from 6000 to speed up
+                    top_p=0.9,
+                    timeout=120  # 120 second timeout
+                )
+                break  # Success
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                if 'timeout' in error_str or 'timed out' in error_str:
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 5
+                        logger.warning(f"AI: Timeout on attempt {attempt + 1}, retrying in {wait_time}s...")
+                        import time
+                        time.sleep(wait_time)
+                    else:
+                        logger.error("AI: All retry attempts failed - using fallback")
+                        return generate_fallback_analysis(articles_to_analyze, pov)
+                else:
+                    logger.error(f"AI: Error on attempt {attempt + 1}: {str(e)}")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(3)
+                    else:
+                        return generate_fallback_analysis(articles_to_analyze, pov)
 
         analysis_content = response.choices[0].message.content.strip()
         
@@ -362,6 +389,65 @@ def auto_cleanup_on_analysis():
     except Exception as e:
         logger.error(f"Auto-cleanup error: {e}")
         return 0
+
+
+def generate_fallback_analysis(articles, pov):
+    """Generate a basic analysis without AI when API fails."""
+    try:
+        current_time = datetime.now().strftime('%B %d, %Y at %I:%M %p')
+        
+        # Group by category and source
+        by_category = {}
+        sources_set = set()
+        
+        for article in articles[:20]:  # Limit to 20 for fallback
+            category = article.get('category', 'general')
+            title = article.get('title', 'No title')
+            source = article.get('source', 'Unknown')
+            sources_set.add(source)
+            
+            if category not in by_category:
+                by_category[category] = []
+            by_category[category].append({'title': title, 'source': source})
+        
+        # Build fallback report
+        report = f"""
+================================================================================
+                  CURRENT AFFAIRS SUMMARY - INDIA
+                  Perspective: {pov.title()}
+================================================================================
+
+Generated: {current_time}
+Sources: {len(sources_set)} outlets | Analyzed: {len(articles)} articles
+Status: Quick Summary (AI analysis temporarily unavailable)
+
+================================================================================
+
+TOP STORIES BY CATEGORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+        
+        for category, items in sorted(by_category.items()):
+            report += f"\n{category.upper()}\n" + "─" * 60 + "\n"
+            for item in items[:5]:  # Top 5 per category
+                report += f"• {item['title']}\n  ({item['source']})\n\n"
+        
+        report += """
+================================================================================
+NOTE: This is a basic summary. The full AI analysis is temporarily unavailable
+due to high server load. Please try again in a few minutes for detailed insights.
+
+Alternative: Use the individual article analyzer or narrative tracker for
+specific stories that interest you.
+================================================================================
+"""
+        
+        return report
+        
+    except Exception as e:
+        logger.error(f"Fallback analysis error: {e}")
+        return f"Analysis temporarily unavailable. Please try again in a few minutes. Error: {str(e)}"
 
 
 if __name__ == "__main__":
