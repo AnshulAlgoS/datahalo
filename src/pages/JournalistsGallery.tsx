@@ -50,11 +50,16 @@ const JournalistsGallery = () => {
   const loadJournalists = async () => {
     setLoading(true);
     try {
+      console.log("🌐 API_URL:", API_URL);
+      console.log("📝 VITE_API_URL:", import.meta.env.VITE_API_URL);
+      console.log("🔍 Fetching from:", `${API_URL}/lms/journalists/all`);
+      
       const response = await axios.get(`${API_URL}/lms/journalists/all`);
       console.log("=== API RESPONSE ===");
-      console.log("Status:", response.data.status);
+      console.log("Status:", response.status);
+      console.log("Data status:", response.data.status);
       console.log("Count:", response.data.count);
-      console.log("Sample journalist raw data:", response.data.journalists[0]);
+      console.log("Sample journalist:", response.data.journalists?.[0]?.name);
       console.log("==================");
       
       if (response.data.status === "success" && Array.isArray(response.data.journalists)) {
@@ -324,8 +329,10 @@ const JournalistsGallery = () => {
         console.warn("Invalid response format or no journalists found");
         setJournalists([]);
       }
-    } catch (error) {
-      console.error("Failed to load journalists:", error);
+    } catch (error: any) {
+      console.error("❌ Failed to load journalists:", error);
+      console.error("❌ Error details:", error.response?.data || error.message);
+      console.error("❌ API URL used:", `${API_URL}/lms/journalists/all`);
       // Fallback to showing empty state
       setJournalists([]);
     } finally {
