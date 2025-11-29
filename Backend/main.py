@@ -547,204 +547,25 @@ async def analyze_narrative(request: NarrativeRequest):
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        # OPTIMIZED: Quick database check, then go straight to SERP if empty
-        # Strategy 1: Quick exact phrase match (limit 20 for speed)
-        articles = list(news_collection.find({
-            "$or": [
-                {"title": {"$regex": topic, "$options": "i"}},
-                {"description": {"$regex": topic, "$options": "i"}}
-            ],
-            "fetchedAt": {"$gte": start_date, "$lte": end_date}
-        }).sort("fetchedAt", -1).limit(20))
-
-        logger.info(f"STATS: Database quick check: Found {len(articles)} articles")
+        # OPTIMIZED: Skip database entirely, go straight to SERP for fresh results
+        articles = []
         
-        # If database has few articles, skip other database strategies and go to SERP directly
-        if len(articles) < 5 and SERP_API_KEY:
-            logger.info(f"OPTIMIZE: Skipping database strategies, going directly to SERP API for fresh data...")
-
-        # Strategy 2: Only if we have some articles but not enough, try keyword matching
-        elif len(articles) >= 5 and len(articles) < 10:
-            # Extract keywords but keep minimum word length reasonable
-            keywords = [word.lower() for word in topic.split() if len(word) > 2]
-            
-            if len(keywords) >= 2:
-                # IMPROVED: For multi-word topics, require ALL keywords to match (AND logic)
-                # This prevents "vit bhopal" from matching random "vit" or "bhopal" articles
-                and_conditions = []
-                for keyword in keywords:
-                    and_conditions.append({
-                        "$or": [
-                            {"title": {"$regex": keyword, "$options": "i"}},
-                            {"description": {"$regex": keyword, "$options": "i"}}
-                        ]
-                    })
-                
-                articles_strategy2 = list(news_collection.find({
-                    "$and": and_conditions,  # Changed from OR to AND - requires ALL keywords
-                    "fetchedAt": {"$gte": start_date, "$lte": end_date}
-                }).sort("fetchedAt", -1).limit(100))
-            elif len(keywords) == 1:
-                # For single keyword, use OR logic (as before)
-                articles_strategy2 = list(news_collection.find({
-                    "$or": [
-                        {"title": {"$regex": keywords[0], "$options": "i"}},
-                        {"description": {"$regex": keywords[0], "$options": "i"}}
-                    ],
-                    "fetchedAt": {"$gte": start_date, "$lte": end_date}
-                }).sort("fetchedAt", -1).limit(100))
-            else:
-                articles_strategy2 = []
-
-            # Merge and deduplicate (FIXED: moved outside the else block)
-            seen_urls = {a["url"] for a in articles}
-            added_count = 0
-            for article in articles_strategy2:
-                if article["url"] not in seen_urls:
-                    articles.append(article)
-                    seen_urls.add(article["url"])
-                    added_count += 1
-
-            logger.info(f"STATS: Strategy 2 (ALL keywords must match): Found {len(articles_strategy2)} relevant, added {added_count} new, total now {len(articles)}")
-            
-            if len(keywords) >= 2:
-                logger.info(f"SUCCESS: Using AND logic for {keywords} - requires ALL keywords in article")
-
-        # Strategy 3: Skip category search for speed - go straight to SERP
-        # if len(articles) < 5:
-            # Determine likely category from topic
-            category_map = {
-                "election": "general",
-                "vote": "general",
-                "politic": "general",
-                "government": "general",
-                "economy": "business",
-                "market": "business",
-                "stock": "business",
-                "tech": "technology",
-                "ai": "technology",
-                "health": "health",
-                "medical": "health",
-                "sport": "sports",
-                "climate": "science",
-                "environment": "science"
-            }
-
-            likely_category = "general"
-            topic_lower = topic.lower()
-            for key, cat in category_map.items():
-                if key in topic_lower:
-                    likely_category = cat
-                    break
-
-            logger.info(f"STATS: Strategy 3: Trying category '{likely_category}' articles...")
-
-            category_articles = list(news_collection.find({
-                "category": likely_category,
+        if SERP_API_KEY:
+            logger.info(f"OPTIMIZE: Going directly to SERP API for fresh Google News results...")
+        else:
+            # Only check database if SERP not available
+            logger.info(f"INFO: SERP not available, checking database...")
+            articles = list(news_collection.find({
+                "$or": [
+                    {"title": {"$regex": topic, "$options": "i"}},
+                    {"description": {"$regex": topic, "$options": "i"}}
+                ],
                 "fetchedAt": {"$gte": start_date, "$lte": end_date}
-            }).sort("fetchedAt", -1).limit(50))
+            }).sort("fetchedAt", -1).limit(20))
+            logger.info(f"STATS: Database: Found {len(articles)} articles")
 
-            # Add articles that might be relevant with better scoring
-            seen_urls = {a["url"] for a in articles}
-            keywords = [word.lower() for word in topic.split() if len(word) > 2]
-            
-            for article in category_articles:
-                if article["url"] not in seen_urls:
-                    # IMPROVED: Check if article matches MULTIPLE keywords (more relevant)
-                    text = f"{article.get('title', '')} {article.get('description', '')}".lower()
-                    matches = sum(1 for word in keywords if word in text)
-                    
-                    # Require at least 2 keywords to match (or all if only 1-2 keywords total)
-                    required_matches = min(2, len(keywords))
-                    if matches >= required_matches:
-                        articles.append(article)
-                        seen_urls.add(article["url"])
-
-            # logger.info(f"STATS: Strategy 3 (category): Total articles now {len(articles)}")
-
-        # Strategy 4: Skip NewsAPI (often fails) - go straight to SERP
-        # if len(articles) < 5:
-            logger.info(f"STATS: Strategy 4: Fetching from NewsAPI for '{topic}'...")
-
-            try:
-                url = "https://newsapi.org/v2/everything"
-                params = {
-                    "apiKey": NEWS_API_KEY,
-                    "q": topic,
-                    "language": "en",
-                    "sortBy": "publishedAt",
-                    "pageSize": 100,
-                    "from": start_date.strftime("%Y-%m-%d"),
-                }
-
-                logger.info(f"API: Calling NewsAPI with query: '{topic}' from {start_date.strftime('%Y-%m-%d')}")
-                response = requests.get(url, params=params, timeout=15)
-                
-                logger.info(f"API: NewsAPI response status: {response.status_code}")
-
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    if data.get("status") == "ok":
-                        raw_articles = data.get("articles", [])
-                        logger.info(f"SUCCESS: NewsAPI returned {len(raw_articles)} raw articles")
-
-                        seen_urls = {a["url"] for a in articles}
-                        keywords = [word.lower() for word in topic.split() if len(word) > 2]
-                        logger.info(f"SEARCH: Keywords for relevance check: {keywords}")
-                        
-                        relevant_count = 0
-                        filtered_count = 0
-                        
-                        for item in raw_articles:
-                            if item.get("title") and item.get("url") and item["title"] != "[Removed]":
-                                if item["url"] not in seen_urls:
-                                    # IMPROVED: Verify relevance before adding
-                                    text = f"{item['title']} {item.get('description', '')}".lower()
-                                    matches = sum(1 for word in keywords if word in text)
-                                    
-                                    # For 3+ keywords, require at least 2 to match
-                                    # For 2 keywords, require both to match
-                                    # For 1 keyword, require it to match
-                                    required_matches = max(1, min(2, len(keywords)))
-                                    
-                                    if matches >= required_matches:
-                                        relevant_count += 1
-                                        article = {
-                                            "title": item["title"],
-                                            "description": item.get("description", ""),
-                                            "url": item["url"],
-                                            "image": item.get("urlToImage"),
-                                            "source": item.get("source", {}).get("name", "Unknown"),
-                                            "publishedAt": item.get("publishedAt"),
-                                            "category": "general",
-                                            "fetchedAt": datetime.utcnow(),
-                                        }
-
-                                        # Save to database
-                                        news_collection.update_one(
-                                            {"url": article["url"]},
-                                            {"$set": article},
-                                            upsert=True
-                                        )
-
-                                        articles.append(article)
-                                        seen_urls.add(article["url"])
-                                    else:
-                                        filtered_count += 1
-
-                        logger.info(f"SUCCESS: NewsAPI: {relevant_count} relevant articles added, {filtered_count} filtered out")
-                        logger.info(f"SAVE: After NewsAPI fetch: {len(articles)} total articles")
-                    else:
-                        logger.error(f"ERROR: NewsAPI error: {data.get('message', 'Unknown error')}")
-                else:
-                    logger.error(f"ERROR: NewsAPI HTTP error: {response.status_code} - {response.text[:200]}")
-            except Exception as e:
-                logger.error(f"ERROR: NewsAPI fetch failed: {str(e)}", exc_info=True)
-                pass  # Continue to SERP API
-
-        # OPTIMIZED Strategy: Use SERP API directly for fresh, comprehensive data
-        if len(articles) < 10 and SERP_API_KEY:
+        # SERP API: Fetch fresh data from Google News
+        if SERP_API_KEY:
             logger.info(f"OPTIMIZE: Fetching fresh data from Google News via SERP API for '{topic}'...")
             
             try:
@@ -1148,53 +969,50 @@ class UpdateChatTitleRequest(BaseModel):
     title: str
 
 async def web_search_for_context(query: str) -> dict:
-    """Perform comprehensive web search for RAG with media literacy focus."""
+    """Perform CONTEXTUAL web search based on user's ACTUAL question."""
     if not SERP_API_KEY:
         return {"context": "", "sources": []}
     
     try:
-        logger.info(f"TUTOR: Searching web for context: '{query[:50]}'")
+        logger.info(f"TUTOR: Searching web contextually for: '{query[:80]}'")
         
-        # Enhanced search with media literacy focus
-        search_queries = [
-            query + " media literacy fact check",
-            query + " journalism bias analysis",
-            query + " source verification"
-        ]
+        # Use EXACT user query for relevant results
+        serp_url = "https://serpapi.com/search.json"
+        params = {
+            "api_key": SERP_API_KEY,
+            "engine": "google",
+            "q": query,  # EXACT query from user
+            "num": 6,  # Get top 6 results
+            "gl": "in"
+        }
+        
+        response = requests.get(serp_url, params=params, timeout=10)
         
         all_results = []
         sources = []
         
-        for search_query in search_queries[:2]:  # Limit to 2 searches
-            serp_url = "https://serpapi.com/search.json"
-            params = {
-                "api_key": SERP_API_KEY,
-                "engine": "google",
-                "q": search_query,
-                "num": 3,
-                "gl": "in"
-            }
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get("organic_results", [])
             
-            response = requests.get(serp_url, params=params, timeout=10)
+            logger.info(f"TUTOR: Found {len(results)} web results")
             
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get("organic_results", [])
+            # Get top 5 most relevant results
+            for result in results[:5]:
+                title = result.get("title", "")
+                snippet = result.get("snippet", "")
+                link = result.get("link", "")
                 
-                for result in results[:2]:
-                    title = result.get("title", "")
-                    snippet = result.get("snippet", "")
-                    link = result.get("link", "")
-                    
-                    if title and snippet:
-                        all_results.append(f"• {title}\n  {snippet}")
-                        sources.append({"title": title, "url": link})
+                if title and snippet:
+                    all_results.append(f"• {title}\n  {snippet}")
+                    sources.append({"title": title, "url": link})
         
         if all_results:
-            context = "\n\n".join(all_results[:4])
-            logger.info(f"TUTOR: Found {len(sources)} relevant sources")
-            return {"context": context, "sources": sources[:4]}
+            context = "\n\n".join(all_results[:5])
+            logger.info(f"TUTOR: Returning {len(sources)} contextual sources")
+            return {"context": context, "sources": sources[:5]}
         
+        logger.warning(f"TUTOR: No web results found for query")
         return {"context": "", "sources": []}
         
     except Exception as e:
@@ -1338,7 +1156,7 @@ Keep responses conversational, engaging, and empowering. Use analogies and metap
         
         logger.info(f"TUTOR: Response generated ({len(tutor_reply)} chars)")
         
-        # Save to MongoDB with chat session support
+        # Save to MongoDB with enhanced chat session support
         if request.user_id and MONGODB_AVAILABLE:
             try:
                 from bson import ObjectId
@@ -1347,25 +1165,28 @@ Keep responses conversational, engaging, and empowering. Use analogies and metap
                 chat_id = request.chat_id
                 
                 if not chat_id:
-                    # Create new chat session
+                    # Create new chat session with smart title
                     chat_sessions_collection = db["ai_tutor_chat_sessions"]
                     
-                    # Generate title from first message
+                    # Generate smart title from first message (first 50 chars)
                     title = request.chat_title or user_message[:50]
+                    if len(user_message) > 50:
+                        title = title + "..."
                     
                     new_session = {
                         "user_id": request.user_id,
                         "title": title,
                         "created_at": datetime.utcnow(),
                         "updated_at": datetime.utcnow(),
-                        "message_count": 2
+                        "message_count": 2,
+                        "first_message": user_message[:100]
                     }
                     
                     session_result = chat_sessions_collection.insert_one(new_session)
                     chat_id = str(session_result.inserted_id)
-                    logger.info(f"TUTOR: Created new chat session (ID: {chat_id})")
+                    logger.info(f"TUTOR: ✅ Created new chat session '{title}' (ID: {chat_id})")
                 
-                # Save messages to chat session
+                # Save messages to chat history
                 chat_messages_collection = db["ai_tutor_messages"]
                 
                 messages_to_save = [
@@ -1383,29 +1204,35 @@ Keep responses conversational, engaging, and empowering. Use analogies and metap
                         "content": tutor_reply,
                         "timestamp": datetime.utcnow(),
                         "web_search_used": bool(web_context),
-                        "sources": sources if sources else []
+                        "sources": sources if sources else [],
+                        "query_for_search": user_message if web_context else None
                     }
                 ]
                 
                 chat_messages_collection.insert_many(messages_to_save)
                 
-                # Update session
+                # Update session metadata
                 chat_sessions_collection = db["ai_tutor_chat_sessions"]
                 chat_sessions_collection.update_one(
                     {"_id": ObjectId(chat_id)},
                     {
-                        "$set": {"updated_at": datetime.utcnow()},
+                        "$set": {
+                            "updated_at": datetime.utcnow(),
+                            "last_message": user_message[:100]
+                        },
                         "$inc": {"message_count": 2}
                     }
                 )
                 
-                logger.info(f"TUTOR: Saved messages to chat {chat_id}")
+                logger.info(f"TUTOR: ✅ Saved conversation to database (chat: {chat_id}, web_search: {bool(web_context)})")
                 
             except Exception as db_error:
-                logger.error(f"TUTOR: Failed to save chat to MongoDB: {str(db_error)}")
+                logger.error(f"TUTOR: ❌ Failed to save chat to MongoDB: {str(db_error)}")
                 chat_id = None
         else:
             chat_id = None
+            if not request.user_id:
+                logger.warning(f"TUTOR: ⚠️ No user_id provided - chat not saved to database")
         
         return {
             "status": "success",
