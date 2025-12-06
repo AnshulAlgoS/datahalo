@@ -283,7 +283,7 @@ const Contact = () => {
               <div className="text-sm text-muted-foreground">
                 <p>© {new Date().getFullYear()} DataHalo. All rights reserved.</p>
                 <p className="text-xs mt-1">
-                  Made with ❤️ for journalists, researchers, and truth-seekers worldwide.
+                  Made with love for journalists, researchers, and truth-seekers worldwide.
                 </p>
               </div>
 
