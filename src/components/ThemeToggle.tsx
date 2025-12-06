@@ -6,24 +6,29 @@ export const ThemeToggle = () => {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
-    // Check localStorage and system preference on mount
-    const storedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    const systemTheme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    const storedTheme = localStorage.getItem("theme") as
+      | "light"
+      | "dark"
+      | null;
+
+    const systemTheme = window.matchMedia("(prefers-color-scheme: light)")
+      .matches
+      ? "light"
+      : "dark";
+
     const initialTheme = storedTheme || systemTheme;
-    
+
     setTheme(initialTheme);
     applyTheme(initialTheme);
   }, []);
 
   const applyTheme = (newTheme: "light" | "dark") => {
     const root = document.documentElement;
-    
-    if (newTheme === "light") {
-      root.classList.add("light");
-      root.classList.remove("dark");
+
+    if (newTheme === "dark") {
+      root.classList.add("dark");      // dark = .dark class
     } else {
-      root.classList.add("dark");
-      root.classList.remove("light");
+      root.classList.remove("dark");   // light = default :root
     }
   };
 

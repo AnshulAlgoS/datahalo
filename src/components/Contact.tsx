@@ -301,15 +301,15 @@ const Contact = () => {
           {/* Extra Info Bar */}
           <div className="mt-8 p-4 rounded-xl bg-gradient-to-r from-primary/5 via-accent/5 to-primary/5 border border-primary/20">
             <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground">
-              <span>🚀 Powered by NVIDIA AI</span>
+              <span> Powered by NVIDIA AI</span>
               <span>•</span>
               <span>STATS: Real-time Analysis</span>
               <span>•</span>
-              <span>🔒 Privacy First</span>
+              <span> Privacy First</span>
               <span>•</span>
-              <span>🌍 Global Coverage</span>
+              <span> Global Coverage</span>
               <span>•</span>
-              <span>📚 Research Ready</span>
+              <span> Research Ready</span>
             </div>
           </div>
         </motion.footer>
