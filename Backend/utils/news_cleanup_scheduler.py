@@ -37,15 +37,13 @@ def cleanup_old_news(days_old=7):
         return
     
     try:
-        cutoff_date = datetime.now() - timedelta(days=days_old)
-        cutoff_iso = cutoff_date.isoformat()
+        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
         
         logger.info(f"=== AUTOMATIC CLEANUP STARTING ===")
         logger.info(f"Deleting articles older than {days_old} days (before {cutoff_date.strftime('%Y-%m-%d %H:%M:%S')})")
         
-        # Count articles before cleanup
         total_before = news_collection.count_documents({})
-        old_count = news_collection.count_documents({"publishedAt": {"$lt": cutoff_iso}})
+        old_count = news_collection.count_documents({"fetchedAt": {"$lt": cutoff_date}})
         
         logger.info(f"Total articles: {total_before}")
         logger.info(f"Articles to delete: {old_count}")
@@ -54,9 +52,8 @@ def cleanup_old_news(days_old=7):
             logger.info("No old articles to delete. Database is fresh!")
             return
         
-        # Delete old articles
         result = news_collection.delete_many({
-            "publishedAt": {"$lt": cutoff_iso}
+            "fetchedAt": {"$lt": cutoff_date}
         })
         
         deleted_count = result.deleted_count

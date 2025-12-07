@@ -67,12 +67,137 @@ def get_perspective_prompt(pov):
         "business student": {
             "system": "You are a business strategy consultant analyzing Indian market dynamics. Write naturally about business trends.",
             "focus": "Analyze business opportunities, market trends, competitive strategies, regulatory changes, and entrepreneurial insights in India."
+        },
+        "women commission": {
+            "system": "You are the Chairperson of a State Women Commission focusing on women's safety, rights, welfare, and justice in India.",
+            "focus": "Highlight gender impact, women's safety, legal protections, enforcement status, government schemes for women, and actionable steps for administration."
+        },
+        "economist": {
+            "system": "You are an economist analyzing India’s macroeconomy, trade, inflation, employment, and sectoral performance.",
+            "focus": "Explain fiscal/monetary policy signals, inflation trends, employment data, trade, investments, and sectoral impacts with India-specific metrics."
+        },
+        "ias officer": {
+            "system": "You are an IAS officer focusing on governance, implementation, compliance, and service delivery.",
+            "focus": "Emphasize administrative feasibility, inter-departmental coordination, implementation status, compliance risks, and citizen service outcomes."
+        },
+        "assistant commissioner of police": {
+            "system": "You are an ACP focusing on law and order, policing outcomes, cybercrime, and enforcement challenges.",
+            "focus": "Assess crime trends, enforcement effectiveness, resource needs, policy implications, cyber risks, and community policing actions."
+        },
+        "social worker": {
+            "system": "You are a social worker focusing on welfare delivery, vulnerable communities, and grassroots impact.",
+            "focus": "Identify social impact, gaps in welfare delivery, NGO-government partnerships, local challenges, and community-centric actions."
+        },
+        "block president": {
+            "system": "You are a local block-level leader focusing on development schemes and citizen needs.",
+            "focus": "Translate news into local development actions, scheme uptake, infrastructure status, and steps to improve local service delivery."
         }
     }
     
     return prompts.get(pov, prompts["general public"])
 
-def smart_analyse(articles, pov="general public"):
+def _select_articles_for_pov(articles, pov):
+    settings = {
+        "government exam aspirant": {
+            "allowed": {"general", "business", "technology", "science", "health"},
+            "excluded": {"entertainment", "sports"},
+            "caps": {"general": 18, "business": 14, "technology": 10, "science": 4, "health": 4},
+            "max": 50,
+        },
+        "finance analyst": {
+            "allowed": {"business", "technology", "science", "general", "health"},
+            "excluded": {"entertainment", "sports"},
+            "caps": {"business": 18, "technology": 12, "science": 10, "general": 10, "health": 8},
+            "max": 50,
+        },
+        "tech student": {
+            "allowed": {"technology", "science", "business", "general", "health"},
+            "excluded": {"entertainment", "sports"},
+            "caps": {"technology": 18, "science": 12, "business": 10, "general": 8, "health": 6},
+            "max": 50,
+        },
+        "business student": {
+            "allowed": {"business", "technology", "general", "science", "health"},
+            "excluded": {"entertainment", "sports"},
+            "caps": {"business": 18, "technology": 12, "general": 10, "science": 8, "health": 6},
+            "max": 50,
+        },
+        "journalism student": {
+            "allowed": {"general", "technology", "business", "science", "health", "sports", "entertainment"},
+            "excluded": set(),
+            "caps": {"general": 12, "technology": 8, "business": 8, "science": 6, "health": 6, "sports": 5, "entertainment": 5},
+            "max": 50,
+        },
+        "general public": {
+            "allowed": {"general", "technology", "business", "science", "health", "sports", "entertainment"},
+            "excluded": set(),
+            "caps": {"general": 14, "technology": 8, "business": 8, "science": 6, "health": 6, "sports": 5, "entertainment": 5},
+            "max": 45,
+        },
+    }
+
+    cfg = settings.get(pov.lower(), settings["general public"])
+
+    def _article_dt(a):
+        ts = a.get("fetchedAt")
+        if ts:
+            try:
+                return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except:
+                pass
+        ts = a.get("publishedAt")
+        if ts:
+            try:
+                return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except:
+                pass
+        return datetime.min
+
+    dedup = {}
+    for a in articles:
+        u = a.get("url") or f"{a.get('title','')}:{a.get('source','')}"
+        if u not in dedup:
+            dedup[u] = a
+
+    sorted_items = sorted(dedup.values(), key=_article_dt, reverse=True)
+
+    buckets = {}
+    for a in sorted_items:
+        cat = (a.get("category") or "general").lower()
+        if cat in cfg["excluded"]:
+            continue
+        if cfg["allowed"] and cat not in cfg["allowed"]:
+            continue
+        buckets.setdefault(cat, []).append(a)
+
+    selected = []
+    per_cat_taken = {k: 0 for k in cfg["caps"].keys()}
+    for cat in cfg["allowed"]:
+        cap = cfg["caps"].get(cat, 5)
+        for a in buckets.get(cat, []):
+            if per_cat_taken.get(cat, 0) >= cap:
+                break
+            selected.append(a)
+            per_cat_taken[cat] = per_cat_taken.get(cat, 0) + 1
+            if len(selected) >= cfg["max"]:
+                break
+        if len(selected) >= cfg["max"]:
+            break
+
+    if len(selected) < cfg["max"]:
+        for cat, items in buckets.items():
+            if len(selected) >= cfg["max"]:
+                break
+            for a in items:
+                if len(selected) >= cfg["max"]:
+                    break
+                if a in selected:
+                    continue
+                selected.append(a)
+
+    return selected
+
+def smart_analyse(articles, pov="general public", region_context=None):
     """
     Analyze latest Indian news with in-depth, accurate insights.
     Natural language, no formulas, focused on current affairs.
@@ -87,15 +212,8 @@ def smart_analyse(articles, pov="general public"):
         if not ai_client:
             return "AI analysis service is currently unavailable."
 
-        # Sort by published date to get LATEST articles first
-        sorted_articles = sorted(
-            articles, 
-            key=lambda x: x.get('publishedAt', ''), 
-            reverse=True  # Most recent first
-        )
-        
-        # Limit to 40 most recent articles
-        articles_to_analyze = sorted_articles[:40]
+        selected = _select_articles_for_pov(articles, pov)
+        articles_to_analyze = selected
         total_articles = len(articles)
         
         logger.info(f"Analyzing {len(articles_to_analyze)} latest articles out of {total_articles} total")
@@ -134,75 +252,104 @@ def smart_analyse(articles, pov="general public"):
         prompt_config = get_perspective_prompt(pov.lower())
         
         # Natural, in-depth analysis prompt
-        user_prompt = f"""You are analyzing INDIAN current affairs for {pov}. Focus ONLY on news directly related to India - Indian politics, economy, society, policies, and India's international relations.
+        extra_focus = ""
+        if pov.lower() == "government exam aspirant":
+            extra_focus = "\nADDITIONAL INSTRUCTIONS FOR EXAM PREP:\n- Do not include entertainment or sports\n- Map topics to UPSC GS papers and key syllabus areas\n- Emphasize government schemes, constitutional articles, committees, reports, indices\n- Provide factual bullet points suitable for revision\n"
+        elif pov.lower() == "women commission":
+            extra_focus += "\nWOMEN-FOCUSED ACTION:\n- Prioritize incidents and developments related to women's safety and rights\n- Highlight legal protections, enforcement status, and gaps\n- Provide 4-6 clear administrative and policing action steps\n- Emphasize prevention, rapid response, survivor support, and accountability\n"
+        elif pov.lower() == "assistant commissioner of police":
+            extra_focus += "\nLAW & ORDER ACTION:\n- Focus on crime trends, hotspots, and enforcement effectiveness\n- Include cybercrime, fraud, and public safety updates\n- Provide 4-6 specific policing actions (deployment, surveillance, outreach, coordination)\n- Note FIR patterns, investigation progress, and resource needs\n"
+        elif pov.lower() == "ias officer":
+            extra_focus += "\nGOVERNANCE ACTION:\n- Emphasize implementation status of schemes and compliance risks\n- Identify inter-departmental coordination needs and bottlenecks\n- Provide 4-6 actionable administrative steps for service delivery improvement\n- Include monitoring metrics and citizen feedback mechanisms\n"
+        elif pov.lower() == "economist":
+            extra_focus += "\nECONOMY FOCUS:\n- Emphasize inflation, employment, trade, investment, sector performance\n- Link news to macro indicators and state-level implications\n- Provide 4-6 policy-relevant takeaways and risk signals\n"
+        elif pov.lower() == "social worker":
+            extra_focus += "\nWELFARE FOCUS:\n- Prioritize vulnerable groups, welfare delivery gaps, and local challenges\n- Provide 4-6 community-centric actions and NGO-government collaboration ideas\n- Emphasize health, education, and protection services\n"
+        elif pov.lower() == "block president":
+            extra_focus += "\nLOCAL DEVELOPMENT FOCUS:\n- Emphasize block/panchayat-level schemes and infrastructure status\n- Provide 4-6 citizen-facing actions to improve local service delivery\n- Include roads, water, electricity, health, and school improvements\n"
+
+        if region_context:
+            rc_state = (region_context.get("state") or "").strip()
+            rc_district = (region_context.get("district") or "").strip()
+            if rc_state or rc_district:
+                local_line = "\nREGIONAL FOCUS:" \
+                    + (f" Emphasize developments related to {rc_district}, " if rc_district else " ") \
+                    + (f"{rc_state}." if rc_state else "") \
+                    + " If limited local news, acknowledge and prioritize closest relevant Indian context (state-level, then national).\n"
+                extra_focus += local_line
+
+        user_prompt = f"""You are analyzing INDIAN current affairs for {pov}. Focus ONLY on news directly related to India - Indian politics, economy, society, policies, and India's international relations.{extra_focus}
 
 WHAT TO COVER:
 {prompt_config['focus']}
 
-STRUCTURE YOUR ANALYSIS WITH CLEAR HEADINGS:
+STRUCTURE WITH CLEAR HEADINGS AND BULLET POINTS:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TODAY'S TOP DEVELOPMENTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Write 2-3 paragraphs summarizing the most important Indian news from today. Be specific with facts, numbers, names, and dates from the articles.
+List 6-10 concise bullet points with facts, names, dates, and numbers.
 
+• [Specific event with numbers/dates]
+• [Policy decision and immediate impact]
+• [Economic/market development]
+• [Governance/regulatory update]
+• [...]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MAJOR STORIES - IN DEPTH
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For each significant INDIAN story (cover 4-6 stories):
+Cover 4-6 significant INDIAN stories. For each:
 
-[STORY TITLE - Make it specific and newsworthy]
-
-Write 2-3 paragraphs explaining:
-- What exactly happened (with dates, names, numbers from articles)
-- Why this is happening (context and background)
-- Impact on India (economy, citizens, policy)
-- What to watch next
-
-Use natural flowing paragraphs. Be specific and accurate.
-
+[STORY TITLE]
+• What happened (with dates, names, numbers)
+• Why it happened (context/background)
+• Impact on India (economy, citizens, policy)
+• What to watch next
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KEY POINTS TO REMEMBER
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-List 8-12 specific facts that matter:
+List 8-12 specific facts:
 
-• [Fact with context - be specific with numbers/dates/names]
 • [Fact with context]
 • [Fact with context]
-...
-
+• [...]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 THE BIG PICTURE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Write 2-3 paragraphs connecting the stories. What patterns emerge? How do these events relate to larger trends in Indian politics, economy, or society?
+List 5 bullet points connecting patterns and trends across stories.
 
+• [Pattern/Trend]
+• [Link between developments]
+• [...]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ANALYSIS FOR {pov.upper()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Write 1-2 paragraphs explaining specifically how these Indian developments matter for your audience. Be practical and direct.
+List 4-6 practical, audience-specific takeaways.
 
+• [Direct relevance]
+• [Actionable insight]
+• [...]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 WHAT TO WATCH
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-List 4-6 upcoming developments to watch:
+List 4-6 upcoming developments:
 
-• [Specific event/decision/deadline with date if available]
+• [Specific event/decision/deadline]
 • [Expected development]
-...
+• [...]
 
-
-LATEST NEWS ARTICLES (sorted by date, most recent first):
+LATEST NEWS ARTICLES (sorted by date):
 {combined_text}
 
 CRITICAL INSTRUCTIONS:
@@ -220,9 +367,8 @@ CRITICAL INSTRUCTIONS:
    - Check dates carefully - articles may be old
 
 3. STRUCTURE:
-   - Use the heading format provided with ━━━ separators
-   - Write in clear paragraphs under each heading
-   - Use bullet points (•) only for key points lists
+   - Use the heading format with ━━━ separators
+   - Use bullet points (•) throughout; keep items concise
    - NO markdown, NO stars, NO emojis
 
 4. QUALITY:
@@ -311,15 +457,19 @@ If articles are old or not India-focused, acknowledge this and work with what's 
         if total_articles > len(articles_to_analyze):
             analysis_scope += f" (from {total_articles} available)"
         
+        from collections import Counter
+        cat_counts = Counter([(a.get('category') or 'general') for a in articles_to_analyze])
+        coverage = ", ".join([f"{k}: {v}" for k, v in sorted(cat_counts.items())])
+
         header = f"""
-================================================================================
+================================================================================================
                   CURRENT AFFAIRS ANALYSIS - INDIA
                   Perspective: {perspective_title}
-================================================================================
+================================================================================================
 
 Generated: {current_time}
-Sources: {len(sources_set)} outlets | Analyzed: {analysis_scope}
-Categories: {', '.join(sorted(categories_set))}
+        Sources: {len(sources_set)} outlets | Analyzed: {analysis_scope}
+        Category Coverage: {coverage}
 
 Analysis of the latest Indian and global news with focus on Indian context,
 policies, economy, politics, and society. Based on most recent articles.
@@ -358,13 +508,12 @@ def cleanup_old_articles(days_old=7):
         return 0
     
     try:
-        cutoff_date = datetime.now() - timedelta(days=days_old)
-        cutoff_iso = cutoff_date.isoformat()
+        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
         
         logger.info(f"Cleaning articles older than {days_old} days (before {cutoff_date.strftime('%Y-%m-%d')})")
         
         result = news_collection.delete_many({
-            "publishedAt": {"$lt": cutoff_iso}
+            "fetchedAt": {"$lt": cutoff_date}
         })
         
         deleted_count = result.deleted_count
@@ -455,4 +604,3 @@ specific stories that interest you.
 
 if __name__ == "__main__":
     logger.info("Smart analysis module loaded")
-

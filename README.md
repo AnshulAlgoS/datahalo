@@ -31,6 +31,14 @@ fact-checking, bias detection, and source verification capabilities.
 
 ---
 
+## 🧩 Problem Statement
+
+- Journalism programs lack an integrated, hands‑on platform combining LMS workflows with newsroom‑grade analysis tools; current solutions are fragmented and generic.
+- Teachers spend hours converting real‑world materials (articles, PDFs, videos) into standards‑aligned assignments with rubrics and citations, slowing course delivery and reducing time for feedback.
+- Students lack immediate, professional feedback against recognized newsroom standards (AP Style, SPJ Ethics, Reuters handbook), delaying skill development and making grading subjective.
+- Courses struggle to teach bias, propaganda, source quality, and evolving narratives at scale because there is no live, multi‑outlet tracking with timelines, source clustering, and key phrase analysis.
+- Civic journalism training lacks district/state context and exportable briefs tailored to real stakeholders (administrators, policing, economic), so outputs remain theoretical rather than actionable.
+
 ## ✨ Key Features
 
 ### 🤖 AI-Powered Assignment Generator
@@ -222,15 +230,16 @@ Analyze narratives around any specific article:
 
 Smart news feed with AI-powered analysis:
 
+- **Primary Actions**: Three big buttons — `Top Developments`, `Govt Exam Prep`, `District Insights`
+- **District/State Insights**: Dropdowns for state and district to focus analysis locally
+- **Judge Perspectives**: Women Commission, Economist, IAS Officer, Assistant Commissioner of Police, Social Worker, Block President
+- **Smart Feed AI**: Personalized perspectives including all above, plus General Public, Finance Analyst, Tech Student, Business Student
+- **Fresh Region Fetch**: Google News (SERP) and NewsData queries enriched with POV-specific keywords for relevant local stories
+- **Article Selection**: `Government Exam Aspirant` POV analyzes up to 50 recent, relevant articles (excludes entertainment/sports)
+- **Accurate Counts**: Frontend displays `articlesAnalyzed` returned by backend for transparency
+- **PDF Export**: One‑click export of the analysis view to PDF using `html2canvas`
 - **Multi-Category Support**: General, Tech, Business, Sports, Science, Health, Entertainment
 - **Database Optimization**: Fast loading from MongoDB cache
-- **Fresh Updates**: One-click refresh for latest articles
-- **Smart Feed AI**: Personalized perspectives
-    - General Public
-    - Finance Analyst
-    - Tech Student
-    - Government Exam Aspirant
-    - Business Student
 - **Duplicate Detection**: Intelligent content deduplication
 - **Source Diversity**: Multiple credible sources
 
@@ -929,16 +938,24 @@ Response: {
 **Smart Feed Analysis**
 
 ```http
-POST /smart-feed?pov=student
+POST /smart-feed?pov={pov}&days={7-30}&state={optional}&district={optional}
 
-POV Options: general public, finance analyst, student, tech student, business student
+POV Options:
+  general public, finance analyst, tech student, business student,
+  government exam aspirant, women commission, economist, ias officer,
+  assistant commissioner of police, social worker, block president
 
 Response: {
   "status": "success",
-  "perspective": "student",
-  "summary": "AI-generated analysis"
+  "perspective": "string",
+  "articlesAnalyzed": 30,
+  "summary": "AI-generated analysis with headings and bullet points"
 }
 ```
+
+Notes:
+- When `state`/`district` are provided, backend performs region-targeted fetching via SERP/NewsData and filters by POV relevance.
+- Analysis output uses big section headings and concise bullet points suitable for quick review and PDF export.
 
 ---
 
@@ -1615,6 +1632,8 @@ VITE_DEBUG=true
 ```
 
 ---
+
+## 🛣️ Roadmap
 
 ## 🛣️ Roadmap
 

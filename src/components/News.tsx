@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildApiUrl, API_ENDPOINTS } from "../config/api";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { 
   Globe, 
   Cpu, 
@@ -30,6 +31,7 @@ import {
   Download,
   X
 } from "lucide-react";
+import html2canvas from "html2canvas";
 
 interface Article {
   title: string;
@@ -53,6 +55,11 @@ const News = () => {
   const [analyzingNews, setAnalyzingNews] = useState(false);
   const [savedArticles, setSavedArticles] = useState<Article[]>([]);
   const [smartAnalysis, setSmartAnalysis] = useState("");
+  const [analysisCount, setAnalysisCount] = useState<number | null>(null);
+  const [selectedState, setSelectedState] = useState("");
+  const [district, setDistrict] = useState("");
+  const [judgePov, setJudgePov] = useState("women commission");
+  const analysisRef = useRef<HTMLDivElement | null>(null);
 
   const categories = [
     { value: "general", label: "General", icon: Globe },
@@ -64,13 +71,17 @@ const News = () => {
     { value: "health", label: "Health", icon: Heart }
   ];
 
-  const perspectives = [
-    { value: "general public", label: "General Public", icon: Users },
-    { value: "journalism student", label: "Journalism Student", icon: Newspaper },
-    { value: "finance analyst", label: "Finance Analyst", icon: TrendingUp },
-    { value: "government exam aspirant", label: "Govt. Exam Aspirant", icon: GraduationCap },
-    { value: "tech student", label: "Tech Student", icon: Cpu },
-    { value: "business student", label: "Business Student", icon: ClipboardList }
+  const judgePerspectives = [
+    { value: "women commission", label: "Women Commission" },
+    { value: "economist", label: "Economist" },
+    { value: "ias officer", label: "IAS Officer" },
+    { value: "assistant commissioner of police", label: "ACP" },
+    { value: "social worker", label: "Social Worker" },
+    { value: "block president", label: "Block President" }
+  ];
+
+  const indianStates = [
+    "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal","Delhi","Jammu and Kashmir","Ladakh","Puducherry","Chandigarh","Andaman and Nicobar Islands","Dadra and Nagar Haveli and Daman and Diu","Lakshadweep"
   ];
 
   const fetchNews = async () => {
@@ -95,9 +106,10 @@ const News = () => {
       const data = await res.json();
       setArticles(data.articles || []);
       setSavedArticles(data.articles || []);
-    } catch (error: any) {
-      console.error("Error fetching news:", error);
-      setError(error.message || "Failed to fetch news");
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err) || "Failed to fetch news";
+      console.error("Error fetching news:", err);
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -108,7 +120,7 @@ const News = () => {
     setError("");
     try {
       const apiUrl = buildApiUrl(API_ENDPOINTS.REFRESH_NEWS);
-      const res = await fetch(`${apiUrl}?category=${category}`, {
+      const res = await fetch(`${apiUrl}?category=${category}&country=in`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -124,9 +136,10 @@ const News = () => {
       
       await res.json();
       await fetchNews();
-    } catch (error: any) {
-      console.error("Error refreshing news:", error);
-      setError(error.message || "Failed to refresh news");
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err) || "Failed to refresh news";
+      console.error("Error refreshing news:", err);
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -137,7 +150,7 @@ const News = () => {
     setError("");
     try {
       const apiUrl = buildApiUrl(API_ENDPOINTS.SMART_FEED);
-      const res = await fetch(`${apiUrl}?pov=${encodeURIComponent(perspective)}`, {
+      const res = await fetch(`${apiUrl}?pov=${encodeURIComponent(perspective)}&days=7`, {
         method: "POST",
         headers: {
           'Accept': 'application/json',
@@ -153,9 +166,10 @@ const News = () => {
       
       const data = await res.json();
       setSmartFeed(data.summary || "No smart feed available.");
-    } catch (error: any) {
-      console.error("Error fetching smart feed:", error);
-      setError(error.message || "Failed to generate smart feed");
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err) || "Failed to generate smart feed";
+      console.error("Error fetching smart feed:", err);
+      setError(msg);
     } finally {
       setAiLoading(false);
     }
@@ -166,7 +180,7 @@ const News = () => {
     setError("");
     try {
       const apiUrl = buildApiUrl(API_ENDPOINTS.SMART_FEED);
-      const res = await fetch(`${apiUrl}?pov=${encodeURIComponent(perspective)}`, {
+      const res = await fetch(`${apiUrl}?pov=${encodeURIComponent(perspective)}&days=7`, {
         method: "POST",
         headers: {
           'Accept': 'application/json',
@@ -183,13 +197,69 @@ const News = () => {
       const data = await res.json();
       setSmartAnalysis(data.summary || "No analysis available.");
       setSmartFeed(data.summary || "No smart feed available.");
-    } catch (error: any) {
-      console.error("Error generating analysis:", error);
-      setError(error.message || "Failed to generate analysis");
+      setAnalysisCount(typeof data.articlesAnalyzed === "number" ? data.articlesAnalyzed : null);
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err) || "Failed to generate analysis";
+      console.error("Error generating analysis:", err);
+      setError(msg);
       setSmartAnalysis("");
     } finally {
       setAnalyzingNews(false);
     }
+  };
+
+  const triggerAnalysis = async (
+    pov: string,
+    opts?: { state?: string; district?: string; days?: number }
+  ) => {
+    setAnalyzingNews(true);
+    setError("");
+    try {
+      const apiUrl = buildApiUrl(API_ENDPOINTS.SMART_FEED);
+      const params = new URLSearchParams();
+      params.set("pov", pov);
+      params.set("days", String(opts?.days ?? 7));
+      if (opts?.state) params.set("state", opts.state);
+      if (opts?.district) params.set("district", opts.district);
+      const res = await fetch(`${apiUrl}?${params.toString()}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        credentials: "omit",
+        mode: "cors",
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setSmartAnalysis(data.summary || "");
+      setSmartFeed(data.summary || "");
+      setAnalysisCount(
+        typeof data.articlesAnalyzed === "number" ? data.articlesAnalyzed : null
+      );
+      setPerspective(pov);
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err) || "Failed to generate analysis";
+      console.error("Error generating analysis:", err);
+      setError(msg);
+      setSmartAnalysis("");
+    } finally {
+      setAnalyzingNews(false);
+    }
+  };
+
+  const exportAnalysisPdf = async () => {
+    if (!analysisRef.current) return;
+    const canvas = await html2canvas(analysisRef.current, { scale: 2, useCORS: true, backgroundColor: "#0b0b0f" });
+    const dataUrl = canvas.toDataURL("image/png");
+    const w = window.open("", "_blank", "noopener,noreferrer");
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>Analysis</title><style>body{margin:0;padding:0;background:#0b0b0f}</style></head><body><img src="${dataUrl}" style="width:100%"/></body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   useEffect(() => {
@@ -431,65 +501,49 @@ const News = () => {
               </div>
             </div>
 
-            <div className="space-y-4">
-              {/* Perspective Selector */}
-              <div>
-                <label className="block text-sm font-semibold mb-3 text-foreground">
-                  Select Your Perspective
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                  {perspectives.map((persp) => (
-                    <button
-                      key={persp.value}
-                      onClick={() => setPerspective(persp.value)}
-                      className={`
-                        relative px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300
-                        ${
-                          perspective === persp.value
-                            ? "bg-primary text-primary-foreground border-2 border-primary shadow-lg shadow-primary/20 scale-105"
-                            : "bg-card/50 text-muted-foreground border-2 border-border/50 hover:border-primary/50 hover:bg-primary/5"
-                        }
-                      `}
-                    >
-                      {perspective === persp.value && (
-                        <motion.div
-                          layoutId="activePerspective"
-                          className="absolute inset-0 rounded-xl bg-primary/20"
-                          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                        />
-                      )}
-                      <span className="relative z-10">{persp.label}</span>
-                    </button>
-                  ))}
-                </div>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Button onClick={() => triggerAnalysis("general public")} disabled={analyzingNews} className="px-8 py-6 text-lg font-semibold rounded-xl">
+                  Top Developments
+                </Button>
+                <Button onClick={() => triggerAnalysis("government exam aspirant")} disabled={analyzingNews} className="px-8 py-6 text-lg font-semibold rounded-xl">
+                  Govt Exam Prep
+                </Button>
+                <Button onClick={() => triggerAnalysis(judgePov, { state: selectedState || undefined, district: district || undefined })} disabled={analyzingNews} className="px-8 py-6 text-lg font-semibold rounded-xl">
+                  District Insights
+                </Button>
               </div>
 
-              {/* Generate Button - Always Visible and Prominent */}
-              <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center pt-2">
-                <Button
-                  onClick={handleGenerateAnalysis}
-                  disabled={analyzingNews || !savedArticles.length}
-                  className="flex-1 sm:flex-none px-8 py-6 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-lg shadow-primary/20 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                >
-                  {analyzingNews ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5 mr-2" />
-                      Generate Analysis
-                    </>
-                  )}
-                </Button>
-
-                {!savedArticles.length && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500/10 border border-orange-500/30 text-sm text-orange-600 dark:text-orange-400">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>Load news articles first to generate analysis</span>
-                  </div>
-                )}
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">State</div>
+                  <Select value={selectedState} onValueChange={(v) => setSelectedState(v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indianStates.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">District/City</div>
+                  <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="Type district/city" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base md:text-sm" />
+                </div>
+                <div>
+                  <Select value={judgePov} onValueChange={(v) => setJudgePov(v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select perspective" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {judgePerspectives.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -510,15 +564,15 @@ const News = () => {
                       Analysis for: {perspective}
                     </h4>
                     <p className="text-xs text-muted-foreground">
-                      Generated {new Date().toLocaleTimeString()} • Based on {savedArticles.length} articles
+                      Generated {new Date().toLocaleTimeString()} • Based on {analysisCount ?? savedArticles.length} articles
                     </p>
                   </div>
                 </div>
 
-                <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div className="prose prose-sm max-w-none dark:prose-invert" ref={analysisRef}>
                   <div className="p-4 rounded-xl bg-card/50 border border-border/50">
-                    <div className="whitespace-pre-wrap text-foreground leading-relaxed">
-                      {smartAnalysis}
+                    <div className="text-foreground">
+                      {renderSmartAnalysis(smartAnalysis)}
                     </div>
                   </div>
                 </div>
@@ -536,21 +590,9 @@ const News = () => {
                     <Copy className="w-4 h-4" />
                     Copy Analysis
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const blob = new Blob([smartAnalysis], { type: "text/plain" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `analysis-${perspective}-${Date.now()}.txt`;
-                      a.click();
-                    }}
-                    className="flex items-center gap-2"
-                  >
+                  <Button variant="outline" size="sm" onClick={exportAnalysisPdf} className="flex items-center gap-2">
                     <Download className="w-4 h-4" />
-                    Download
+                    Export PDF
                   </Button>
                   <Button
                     variant="outline"
@@ -572,3 +614,74 @@ const News = () => {
 };
 
 export default News;
+  const renderSmartAnalysis = (content: string) => {
+    const lines = content.split("\n");
+    const elements: JSX.Element[] = [];
+    let bullets: string[] = [];
+    let inMajorStories = false;
+    const flushBullets = () => {
+      if (bullets.length) {
+        elements.push(
+          <ul className="list-disc pl-6 space-y-2">
+            {bullets.map((b, i) => (
+              <li key={i} className="text-foreground">
+                {b.replace(/^•\s*/, "")}
+              </li>
+            ))}
+          </ul>
+        );
+        bullets = [];
+      }
+    };
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (!t) {
+        flushBullets();
+        continue;
+      }
+      const isSep = t.includes("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      const isHeadingUpper = /^[A-Z0-9' -]+$/.test(t) && t.length > 3 && !t.includes("DataHalo Current Affairs Analysis") && !t.includes("CURRENT AFFAIRS ANALYSIS");
+      const next = (lines[i + 1] || "").trim();
+      if (isSep) {
+        flushBullets();
+        elements.push(<div className="my-4 border-t border-border/50" />);
+        continue;
+      }
+      if (t.includes("MAJOR STORIES - IN DEPTH")) {
+        flushBullets();
+        inMajorStories = true;
+        elements.push(<h3 className="text-xl md:text-2xl font-bold mt-4">{t}</h3>);
+        continue;
+      }
+      if (t.includes("KEY POINTS TO REMEMBER") || t.includes("THE BIG PICTURE") || t.includes("WHAT TO WATCH") || t.includes("LATEST NEWS ARTICLES")) {
+        flushBullets();
+        inMajorStories = false;
+        elements.push(<h3 className="text-xl md:text-2xl font-bold mt-4">{t}</h3>);
+        continue;
+      }
+      if (t.startsWith("• ")) {
+        bullets.push(t);
+        continue;
+      }
+      if (t.includes("CURRENT AFFAIRS ANALYSIS")) {
+        flushBullets();
+        elements.push(<h2 className="text-2xl md:text-3xl font-bold">{t}</h2>);
+        continue;
+      }
+      if (isHeadingUpper || (inMajorStories && next.startsWith("• "))) {
+        flushBullets();
+        elements.push(<h3 className="text-lg md:text-xl font-bold mt-3">{t}</h3>);
+        continue;
+      }
+      elements.push(<p className="text-sm md:text-base leading-relaxed">{t}</p>);
+    }
+    flushBullets();
+    return <div className="space-y-2">{elements}</div>;
+  };
+  const getErrorMessage = (e: unknown) => {
+    if (typeof e === "object" && e && "message" in e) {
+      const m = (e as Record<string, unknown>).message;
+      return typeof m === "string" ? m : "Unknown error";
+    }
+    return "Unknown error";
+  };

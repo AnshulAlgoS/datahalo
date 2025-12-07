@@ -516,7 +516,10 @@ async def get_news(category: str = Query("general", description="Category of new
         raise HTTPException(status_code=500, detail="Failed to retrieve news from database")
 
 @app.get("/refresh-news")
-async def refresh_news_endpoint(category: str = Query("general", description="Category to refresh")):
+async def refresh_news_endpoint(
+    category: str = Query("general", description="Category to refresh"),
+    country: str = Query("in", description="Country code(s) for regional news. Use comma to fetch multiple or 'international'/'all' for preset")
+):
     """
     Refresh news: Fetch fresh articles from API and APPEND to database.
     Returns ALL articles for category sorted by newest first.
@@ -524,25 +527,41 @@ async def refresh_news_endpoint(category: str = Query("general", description="Ca
     try:
         logger.info(f"REFRESH: Refresh requested for '{category}' category...")
 
-        # Use the enhanced refresh function that appends new articles
-        result = refresh_news_fetcher(category=category, page_size=30)
+        # Support multiple countries
+        preset_international = [
+            "in", "us", "gb", "au", "ca", "sg", "ae"
+        ]
 
-        if result.get("status") != "success":
-            error_msg = result.get("error", "Unknown error")
-            raise HTTPException(status_code=500, detail=error_msg)
+        countries = [c.strip().lower() for c in country.split(",") if c.strip()] if country else ["in"]
+        if country.lower() in ("international", "all"):
+            countries = preset_international
 
-        logger.info(f"SUCCESS: Refresh complete: {result['count']} new articles, {result['total_in_db']} total in DB")
+        total_new = 0
+        total_duplicates = 0
+
+        for c in countries:
+            result = refresh_news_fetcher(category=category, page_size=30, country=c)
+            if result.get("status") != "success":
+                logger.warning(f"REFRESH: Country '{c}' failed: {result.get('error')}")
+                continue
+            total_new += result.get("count", 0)
+            total_duplicates += result.get("duplicates_skipped", 0)
+
+        all_articles = get_saved_articles(category=category, limit=100)
+
+        logger.info(f"SUCCESS: Refresh complete across {len(countries)} country codes: {total_new} new, {len(all_articles)} total in DB")
 
         return {
             "status": "success",
             "category": category,
             "source": "refreshed",
-            "new_articles_count": result["count"],
-            "duplicates_skipped": result.get("duplicates_skipped", 0),
-            "total_articles": result["total_in_db"],
-            "articles": result["all_articles"],  # All articles, newest first
+            "new_articles_count": total_new,
+            "duplicates_skipped": total_duplicates,
+            "total_articles": len(all_articles),
+            "articles": all_articles,
+            "countries": countries,
             "timestamp": datetime.utcnow().isoformat(),
-            "message": f"Added {result['count']} new articles. Total: {result['total_in_db']}"
+            "message": f"Added {total_new} new articles across {len(countries)} countries. Total: {len(all_articles)}"
         }
     except HTTPException:
         raise
@@ -570,25 +589,41 @@ async def get_saved_news(category: str = Query("all", description="Category filt
         raise HTTPException(status_code=500, detail="Failed to retrieve saved news")
 
 @app.post("/smart-feed")
-async def get_smart_feed(pov: str = Query("general public", description="Perspective like finance, student, exam, etc.")):
+async def get_smart_feed(
+    pov: str = Query("general public", description="Perspective like finance, student, exam, etc."),
+    days: int = Query(7, description="Limit analysis to articles from the last N days"),
+    state: str = Query("", description="Optional Indian state to focus on"),
+    district: str = Query("", description="Optional district/city to focus on")
+):
     """Generate AI-powered smart feed based on saved articles and perspective."""
     try:
         if not MONGODB_AVAILABLE:
             raise HTTPException(status_code=500, detail="Database not available")
 
-        # Get ALL recent articles from database for comprehensive analysis
-        articles = list(news_collection.find().sort("fetchedAt", -1))
+        from datetime import timedelta
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+
+        articles = list(
+            news_collection
+            .find({"fetchedAt": {"$gte": start_date, "$lte": end_date}})
+            .sort("fetchedAt", -1)
+        )
 
         if not articles:
             # Try to fetch some news first
             logger.info("No articles found, fetching fresh news...")
             await get_news("general")
-            articles = list(news_collection.find().sort("fetchedAt", -1))
+            articles = list(
+                news_collection
+                .find({"fetchedAt": {"$gte": start_date, "$lte": end_date}})
+                .sort("fetchedAt", -1)
+            )
 
         if not articles:
             raise HTTPException(status_code=404, detail="No news articles found in database. Please fetch news first.")
 
-        # Convert MongoDB documents to dict for AI analysis
+        # Convert MongoDB documents to dict for AI analysis (unfiltered)
         article_data = []
         for article in articles:
             article_data.append({
@@ -600,13 +635,141 @@ async def get_smart_feed(pov: str = Query("general public", description="Perspec
                 "publishedAt": article.get("publishedAt", "")
             })
 
-        logger.info(f"ANALYZE: Analyzing {len(article_data)} articles for perspective: {pov}")
-        summary = smart_analyse(article_data, pov)
+        # Region-targeted fetch using SERP or NewsData.io when state/district provided
+        articles_for_ai = []
+        if state or district:
+            # POV-specific keyword enrichment
+            pov_kw_map = {
+                "women commission": [
+                    "women", "women safety", "crime against women", "sexual assault",
+                    "harassment", "domestic violence", "trafficking", "women commission"
+                ],
+                "assistant commissioner of police": [
+                    "police", "law and order", "crime", "cybercrime", "enforcement",
+                    "FIR", "investigation", "arrest"
+                ],
+                "ias officer": [
+                    "governance", "administration", "implementation", "compliance",
+                    "scheme", "policy", "district magistrate", "collector"
+                ],
+                "economist": [
+                    "economy", "inflation", "employment", "GDP", "trade",
+                    "investment", "markets", "industry"
+                ],
+                "social worker": [
+                    "welfare", "community", "NGO", "beneficiary", "child protection",
+                    "education", "health", "poverty"
+                ],
+                "block president": [
+                    "local development", "infrastructure", "roads", "school",
+                    "health center", "panchayat", "block", "gram"
+                ],
+            }
+
+            pov_key = (pov or "").strip().lower()
+            pov_keywords = pov_kw_map.get(pov_key, [])
+            base_terms = [
+                (district.strip() if district else ""),
+                (state.strip() if state else ""),
+                "India",
+            ]
+            region_query = " ".join([p for p in base_terms + pov_keywords if p])
+            region_results = []
+            try:
+                if SERP_API_KEY and region_query:
+                    serp_url = "https://serpapi.com/search.json"
+                    serp_params = {
+                        "api_key": SERP_API_KEY,
+                        "engine": "google_news",
+                        "q": region_query,
+                        "gl": "in",
+                        "hl": "en",
+                        "num": 50
+                    }
+                    logger.info(f"REGION: SERP search for '{region_query}'")
+                    serp_response = requests.get(serp_url, params=serp_params, timeout=15)
+                    if serp_response.status_code == 200:
+                        serp_data = serp_response.json()
+                        news_results = serp_data.get("news_results", [])
+                        for item in news_results:
+                            title = item.get("title", "")
+                            snippet = item.get("snippet", "")
+                            link = item.get("link", "")
+                            source = item.get("source", {}).get("name", "Unknown") if isinstance(item.get("source"), dict) else "Unknown"
+                            date = item.get("date", "")
+                            text = f"{title} {snippet}".lower()
+                            relevant = True
+                            if pov_keywords:
+                                relevant = any(k.lower() in text for k in pov_keywords)
+                            if title and link and relevant:
+                                region_results.append({
+                                    "title": title,
+                                    "description": snippet or title,
+                                    "url": link,
+                                    "source": source,
+                                    "category": "general",
+                                    "publishedAt": date or datetime.utcnow().isoformat()
+                                })
+                # Fallback to NewsData.io keyword search
+                if not region_results and NEWS_API_KEY and region_query:
+                    nd_url = "https://newsdata.io/api/1/latest"
+                    nd_params = {
+                        "apikey": NEWS_API_KEY,
+                        "language": "en",
+                        "country": "in",
+                        "q": region_query,
+                        "size": 10
+                    }
+                    logger.info(f"REGION: NewsData keyword search for '{region_query}'")
+                    nd_response = requests.get(nd_url, params=nd_params, timeout=10)
+                    if nd_response.status_code == 200:
+                        nd_data = nd_response.json()
+                        results = nd_data.get("results", [])
+                        for item in results:
+                            title = item.get("title")
+                            link = item.get("link")
+                            if not title or not link:
+                                continue
+                            text = f"{title} {item.get('description','')}".lower()
+                            relevant = True
+                            if pov_keywords:
+                                relevant = any(k.lower() in text for k in pov_keywords)
+                            if not relevant:
+                                continue
+                            region_results.append({
+                                "title": title,
+                                "description": item.get("description", ""),
+                                "url": link,
+                                "source": item.get("source_id", "Unknown"),
+                                "category": "general",
+                                "publishedAt": item.get("pubDate", "")
+                            })
+            except Exception as e:
+                logger.error(f"ERROR: Region fetch failed: {e}")
+
+            if region_results and len(region_results) >= 8:
+                articles_for_ai = region_results[:50]
+            else:
+                # Soft filter from DB, else use all recent
+                filtered = []
+                s = (state or "").strip().lower()
+                d = (district or "").strip().lower()
+                for a in article_data:
+                    t = a.get("title", "").lower()
+                    desc = (a.get("description", "") or "").lower()
+                    if (s and (s in t or s in desc)) or (d and (d in t or d in desc)):
+                        filtered.append(a)
+                articles_for_ai = filtered if filtered and len(filtered) >= 8 else article_data
+        else:
+            articles_for_ai = article_data
+
+        logger.info(f"ANALYZE: Analyzing {len(articles_for_ai)} articles for perspective: {pov} from last {days} days")
+        summary = smart_analyse(articles_for_ai, pov, region_context={"state": state, "district": district})
 
         return {
             "status": "success",
             "perspective": pov,
-            "articlesAnalyzed": len(article_data),
+            "articlesAnalyzed": len(articles_for_ai),
             "summary": summary
         }
     except HTTPException as he:

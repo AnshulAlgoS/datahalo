@@ -26,7 +26,7 @@ except Exception as e:
     db = None
     news_collection = None
 
-def fetch_news(category="general", language="en", page_size=30):
+def fetch_news(category="general", language="en", page_size=30, country="in"):
     """Fetch latest news and APPEND to database (don't delete old articles)."""
     if not NEWS_API_KEY:
         logger.error("ERROR: NEWS_API_KEY not configured")
@@ -55,10 +55,11 @@ def fetch_news(category="general", language="en", page_size=30):
     # NewsData.io latest endpoint
     url = f"https://newsdata.io/api/1/latest"
     params = {
-        "apikey": NEWS_API_KEY,  # Note: 'apikey' not 'apiKey'
-        "language": "en",
+        "apikey": NEWS_API_KEY,
+        "language": language,
         "category": newsdata_category,
-        "size": min(page_size, 10)  # NewsData.io free tier limit is 10
+        "country": country,
+        "size": min(page_size, 10)
     }
     
     articles = []
@@ -118,7 +119,7 @@ def fetch_news(category="general", language="en", page_size=30):
                 "title": item["title"],
                 "description": item.get("description", ""),
                 "url": item["url"],
-                "image": item.get("urlToImage"),
+                "image": item.get("image"),
                 "source": item.get("source", {}).get("name", "Unknown"),
                 "publishedAt": item.get("publishedAt"),
                 "category": category,
@@ -126,8 +127,8 @@ def fetch_news(category="general", language="en", page_size=30):
             }
             
             try:
-                news_collection.insert_one(article)
-                article["_id"] = str(article["_id"])  # Convert ObjectId to string
+                result = news_collection.insert_one(article)
+                article["_id"] = str(result.inserted_id)
                 new_articles.append(article)
                 stored_count += 1
             except Exception as e:
@@ -152,13 +153,13 @@ def fetch_news(category="general", language="en", page_size=30):
         logger.error(f"ERROR: Database operation failed: {e}")
         return {"count": 0, "articles": [], "error": f"Database error: {str(e)}"}
 
-def refresh_news(category="general", language="en", page_size=30):
+def refresh_news(category="general", language="en", page_size=30, country="in"):
     """
     Refresh news: Fetch fresh articles and append to existing ones.
     Returns all articles with newest at the top.
     """
     logger.info(f"REFRESH: Refreshing {category} news...")
-    result = fetch_news(category, language, page_size)
+    result = fetch_news(category, language, page_size, country)
     
     if result.get("status") == "success":
         logger.info(f"SUCCESS: Refresh complete: {result['count']} new articles added, {result['total_in_db']} total in DB")
