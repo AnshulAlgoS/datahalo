@@ -39,6 +39,25 @@ fact-checking, bias detection, and source verification capabilities.
 - Courses struggle to teach bias, propaganda, source quality, and evolving narratives at scale because there is no live, multi‑outlet tracking with timelines, source clustering, and key phrase analysis.
 - Civic journalism training lacks district/state context and exportable briefs tailored to real stakeholders (administrators, policing, economic), so outputs remain theoretical rather than actionable.
 
+## 💎 USP — Why DataHalo Is Different
+
+- Purpose‑built for journalism education: integrates LMS workflows with newsroom‑grade analysis tools in one platform.
+- Standards‑aligned by design: evaluations and rubrics reference AP Style, SPJ Ethics, and Reuters handbook — not generic writing tips.
+- Dual analyzers: instant rule‑based scoring plus deep AI analysis for nuanced editorial feedback.
+- Live narrative tracking: timelines, manipulation indicators, source clustering, and key‑phrase extraction across outlets.
+- Real news intelligence: region/district insights with POV‑specific queries (Women Commission, IAS, ACP, Economist, etc.) using Google News (SERP) and NewsData.
+- Actionable outputs: big‑heading bullet summaries, accurate article counts, and one‑click PDF exports suitable for classrooms and stakeholders.
+- Assignment generator that cites materials: questions and rubrics are linked to the exact PDFs, URLs, and videos provided.
+- Multi‑chat AI Tutor with RAG: journalism‑focused guidance, current context via web search, and multi‑turn learning.
+- End‑to‑end workflow: teachers create, assign, grade; students learn, submit, receive targeted improvement paths — all in one place.
+
+### Compared to Market Tools
+
+- Generic LMS: lacks newsroom analysis, real‑time narratives, and journalism standards alignment.
+- Standard AI chatbots: offer general writing advice without source‑linked questions, rubrics, or district‑level intelligence.
+- Media monitoring suites: track coverage but don’t teach students or integrate assignments, grading, and AI tutoring.
+- News aggregators: surface headlines without POV‑specific action briefs or education workflows.
+
 ## ✨ Key Features
 
 ### 🤖 AI-Powered Assignment Generator
